@@ -76,9 +76,27 @@ class Engine:
         return load_voice_style(paths)
 
     def _trim_wav(self, wav: np.ndarray, dur: np.ndarray, idx: int = 0) -> np.ndarray:
-        n = int(self.sample_rate * float(dur[idx]))
-        n = max(0, min(n, wav.shape[-1]))
-        return wav[idx, :n] if wav.ndim == 2 else wav[:n]
+        """trailing silence만 잘라낸다 (텍스트 잘림 방지).
+
+        예전엔 duration_predictor가 예측한 dur로 단순 슬라이싱했는데, 그
+        값이 실제 발화 길이보다 짧을 때 마지막 단어가 잘려 들어가지 않는
+        현상이 있었음. 이제는 신호 진폭으로 trailing silence를 찾아
+        그 직후까지만 자른다. 말미에 150ms 여유 버퍼를 둔다.
+        """
+        full = wav[idx] if wav.ndim == 2 else wav
+        if full.size == 0:
+            return full
+
+        threshold = 0.01  # |sample| <= 0.01 (-40dB) → silence
+        nonzero = np.where(np.abs(full) > threshold)[0]
+        if len(nonzero) == 0:
+            # 통째로 무음이면 dur로 잘라 padding 제거 (fallback)
+            n = int(self.sample_rate * float(dur[idx]))
+            return full[: max(0, min(n, full.shape[-1]))]
+
+        tail = int(self.sample_rate * 0.15)
+        end = min(int(nonzero[-1]) + tail, full.shape[-1])
+        return full[:end]
 
     async def synth(
         self,
