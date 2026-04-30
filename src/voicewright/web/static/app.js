@@ -185,7 +185,11 @@
         <span class="scene-duration">${dur}</span>
         <span class="scene-status">대기</span>
       </div>
-      <p class="scene-text">${escapeHtml(sc.narration_text)}</p>
+      <textarea class="scene-text-edit" rows="3" spellcheck="false"></textarea>
+      <div class="scene-meta-row">
+        <span class="hint-mini">발음용 텍스트만 편집 — SRT 자막엔 항상 원본이 들어갑니다.</span>
+        <button type="button" class="reset-text" disabled>↺ 원본 복원</button>
+      </div>
       <div class="scene-controls">
         <button type="button" class="generate-scene">▶ 생성</button>
         <audio class="hidden" controls preload="none"></audio>
@@ -195,6 +199,20 @@
         <a class="dl-srt download" download>⬇ srt</a>
       </div>
     `;
+
+    const ta = card.querySelector('.scene-text-edit');
+    const resetBtn = card.querySelector('.reset-text');
+    ta.value = sc.narration_text;
+    ta.addEventListener('input', () => {
+      const modified = ta.value !== sc.narration_text;
+      card.classList.toggle('text-modified', modified);
+      resetBtn.disabled = !modified;
+    });
+    resetBtn.addEventListener('click', () => {
+      ta.value = sc.narration_text;
+      card.classList.remove('text-modified');
+      resetBtn.disabled = true;
+    });
 
     card.querySelector('.generate-scene').addEventListener('click', () => generateScene(card, sc, chapter));
     return card;
@@ -213,10 +231,12 @@
     card.classList.add('busy');
 
     try {
+      const editedText = card.querySelector('.scene-text-edit').value.trim() || sc.narration_text;
       const fd = new FormData();
       fd.append('chapter', chapter);
       fd.append('scene', sc.scene);
-      fd.append('text', sc.narration_text);
+      fd.append('text', editedText);                 // 합성에 쓸 (편집 가능한) 텍스트
+      fd.append('srt_text', sc.narration_text);      // SRT엔 항상 원본 텍스트
 
       const vo = document.getElementById('voiceOverride').value;
       if (vo) fd.append('voice', vo);

@@ -49,16 +49,14 @@
 
     <!-- 배치 -->
     <section id="tab-batch" class="tab-panel">
-      <p class="hint">scriptforge의 <code>ch{NN}_script.json</code>을 올리면 scene 목록이 카드로 표시됩니다. 카드별로 개별 생성·재생·다운로드가 가능하고, 전체 일괄 생성도 됩니다. 음성은 <code>workspace/ch{NN}/audio/</code>, 자막은 <code>workspace/ch{NN}/subtitles/</code>에 분리 저장됩니다.</p>
+      <aside class="batch-left">
+        <div id="dropzone" class="dropzone">
+          <p>여기에 <code>.json</code> 파일을 끌어놓거나 클릭해서 선택</p>
+          <input id="fileInput" type="file" accept=".json,application/json" hidden>
+          <p id="fileName" class="filename"></p>
+        </div>
 
-      <div id="dropzone" class="dropzone">
-        <p>여기에 <code>.json</code> 파일을 끌어놓거나 클릭해서 선택</p>
-        <input id="fileInput" type="file" accept=".json,application/json" hidden>
-        <p id="fileName" class="filename"></p>
-      </div>
-
-      <div id="batchOptions" class="hidden">
-        <div class="row">
+        <div id="batchOptions" class="hidden">
           <div class="field">
             <label for="chapterOverride">챕터 ID</label>
             <input id="chapterOverride" type="text" placeholder="자동 인식">
@@ -75,26 +73,30 @@
             <label for="batchTotalStep">품질 (steps) <span id="batchStepValue">7</span></label>
             <input id="batchTotalStep" type="range" min="3" max="15" step="1" value="7">
           </div>
-        </div>
 
-        <div class="batch-actions">
-          <button id="runBatch" class="primary">전체 일괄 생성</button>
-          <span id="bulkLinks" class="hidden">
+          <div class="batch-actions">
+            <button id="runBatch" class="primary">전체 일괄 생성</button>
+          </div>
+
+          <div id="bulkLinks" class="hidden bulk-links">
             <a id="zipLink" class="download" download>📦 전체 zip (음성+자막)</a>
             <a id="srtLink" class="download" download>📝 챕터 자막 (.srt)</a>
-          </span>
-        </div>
+          </div>
 
-        <div id="batchProgress" class="progress hidden">
-          <div class="bar"><div id="bar" class="fill" style="width:0%"></div></div>
-          <p id="progressText"></p>
-        </div>
+          <div id="batchProgress" class="progress hidden">
+            <div class="bar"><div id="bar" class="fill" style="width:0%"></div></div>
+            <p id="progressText"></p>
+          </div>
 
-        <ul id="warningList" class="warnings"></ul>
+          <ul id="warningList" class="warnings"></ul>
+        </div>
+      </aside>
+
+      <div class="batch-right">
+        <p class="hint">scriptforge의 <code>ch{NN}_script.json</code>을 올리면 scene 목록이 카드로 표시됩니다. <strong>카드 안의 텍스트는 직접 편집해서 발음을 조정할 수 있고</strong>, 그 상태로 카드별 생성을 누르면 편집된 발음으로 합성됩니다. <strong>SRT 자막에는 항상 원본 텍스트가 들어갑니다.</strong></p>
+        <div id="sceneList" class="scene-list"></div>
+        <div id="batchError" class="error hidden"></div>
       </div>
-
-      <div id="sceneList" class="scene-list"></div>
-      <div id="batchError" class="error hidden"></div>
     </section>
   </main>
 

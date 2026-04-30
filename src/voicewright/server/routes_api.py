@@ -262,6 +262,7 @@ async def synthesize_scene(
     chapter: str = Form(...),
     scene: int = Form(...),
     text: str = Form(...),
+    srt_text: str | None = Form(None),       # SRT 자막에 들어갈 원본 텍스트 (없으면 text 사용)
     voice: str | None = Form(None),
     voice_style: str | None = Form(None),
     speed: float | None = Form(None),
@@ -297,10 +298,11 @@ async def synthesize_scene(
 
     actual_duration = float(len(wav)) / float(engine.sample_rate)
     dur_for_srt = narration_seconds if narration_seconds else actual_duration
-    srt_text = make_single_srt(text, dur_for_srt)
+    body_for_srt = (srt_text or text).strip()  # 자막엔 항상 원본 텍스트가 들어감
+    srt_body_str = make_single_srt(body_for_srt, dur_for_srt)
     srt_p = srt_path(out_root, chapter, int(scene))
     srt_p.parent.mkdir(parents=True, exist_ok=True)
-    srt_p.write_text(srt_text, encoding="utf-8")
+    srt_p.write_text(srt_body_str, encoding="utf-8")
 
     return {
         "chapter": chapter,
