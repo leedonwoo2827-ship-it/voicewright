@@ -60,10 +60,10 @@ def load_voice_map(path: Path) -> VoiceMap:
     with path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
 
-    default = str(data.get("default", "F2")).upper()
+    default = str(data.get("default", "M5")).upper()
     if default not in ALL_VOICE_CODES:
-        logger.warning("voice_map.yaml의 default '%s'가 유효하지 않아 F2로 대체합니다.", default)
-        default = "F2"
+        logger.warning("voice_map.yaml의 default '%s'가 유효하지 않아 M5로 대체합니다.", default)
+        default = "M5"
 
     styles: dict[str, str] = {}
     for k, v in (data.get("styles") or {}).items():

@@ -7,13 +7,13 @@
 # - 그래도 실패하면 default 사용 (job warnings에 기록됨)
 # - 새 voice_style이 등장하면 styles 아래에 한 줄 추가하면 됨
 
-default: F2
+default: M5
 
 styles:
-  # 내레이션 / 일반
-  narrator:           F2
-  default:            F2
-  neutral:            F2
+  # 내레이션 / 일반 — 다큐멘터리 톤 기본 M5 (deep_male)
+  narrator:           M5
+  default:            M5
+  neutral:            M5
   storyteller:        F3
 
   # 여성 변형

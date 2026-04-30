@@ -62,7 +62,7 @@ def test_load_voice_map(tmp_path: Path):
 
 def test_load_voice_map_missing_file(tmp_path: Path):
     vm = load_voice_map(tmp_path / "nope.yaml")
-    assert vm.default == "F2"
+    assert vm.default == "M5"
     assert vm.styles == {}
 
 
