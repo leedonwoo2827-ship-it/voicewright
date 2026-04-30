@@ -53,6 +53,7 @@
   bindSlider('speed', 'speedValue');
   bindSlider('totalStep', 'stepValue');
   bindSlider('batchSpeed', 'batchSpeedValue');
+  bindSlider('batchTotalStep', 'batchStepValue');
 
   // ---- 단일 합성 ----
   document.getElementById('generate').addEventListener('click', async () => {
@@ -143,6 +144,8 @@
       if (vo) fd.append('voice_override', vo);
       const sp = document.getElementById('batchSpeed').value;
       if (sp) fd.append('speed', sp);
+      const ts = document.getElementById('batchTotalStep').value;
+      if (ts) fd.append('total_step', ts);
 
       const submit = await fetch('/api/batch', { method: 'POST', body: fd });
       if (!submit.ok) {
