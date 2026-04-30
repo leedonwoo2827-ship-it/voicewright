@@ -98,38 +98,182 @@
     }
   });
 
-  // ---- 배치 ----
+  // ---- 배치 (대본 일괄) ----
   const dropzone = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
   const fileNameEl = document.getElementById('fileName');
   const runBtn = document.getElementById('runBatch');
-  let selectedFile = null;
+  const batchOptions = document.getElementById('batchOptions');
+  const sceneList = document.getElementById('sceneList');
+  const batchErr = document.getElementById('batchError');
 
-  function setFile(f) {
-    selectedFile = f;
-    fileNameEl.textContent = f ? `선택됨: ${f.name}` : '';
-    runBtn.disabled = !f;
+  let parsedChapter = null;
+  let parsedScenes = null;
+
+  function escapeHtml(s) {
+    return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
   }
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  function showError(msg) {
+    batchErr.textContent = msg;
+    batchErr.classList.remove('hidden');
+  }
+  function clearError() { batchErr.classList.add('hidden'); }
+
+  // ---- 파일 입력 핸들링 → 즉시 parse_script ----
   dropzone.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => setFile(fileInput.files[0] || null));
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files[0];
+    if (f) handleScriptFile(f);
+  });
   ['dragenter', 'dragover'].forEach(ev =>
     dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
   ['dragleave', 'drop'].forEach(ev =>
     dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
   dropzone.addEventListener('drop', e => {
     const f = e.dataTransfer.files[0];
-    if (f) { fileInput.files = e.dataTransfer.files; setFile(f); }
+    if (f) { fileInput.files = e.dataTransfer.files; handleScriptFile(f); }
   });
 
+  async function handleScriptFile(f) {
+    fileNameEl.textContent = `선택됨: ${f.name}`;
+    clearError();
+    sceneList.innerHTML = '';
+    batchOptions.classList.add('hidden');
+    document.getElementById('bulkLinks').classList.add('hidden');
+
+    try {
+      const fd = new FormData();
+      fd.append('script', f);
+      const chOv = document.getElementById('chapterOverride').value.trim();
+      if (chOv) fd.append('chapter', chOv);
+      const res = await fetch('/api/parse_script', { method: 'POST', body: fd });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try { detail = (await res.json()).detail || detail; } catch {}
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      parsedChapter = data.chapter;
+      parsedScenes = data.scenes;
+      document.getElementById('chapterOverride').value = data.chapter;
+      batchOptions.classList.remove('hidden');
+      renderScenes(data.scenes, data.chapter);
+    } catch (e) {
+      showError(`스크립트 파싱 실패: ${e.message}`);
+    }
+  }
+
+  function renderScenes(scenes, chapter) {
+    sceneList.innerHTML = '';
+    scenes.forEach(sc => sceneList.appendChild(renderSceneCard(sc, chapter)));
+  }
+
+  function renderSceneCard(sc, chapter) {
+    const card = document.createElement('div');
+    card.className = 'scene-card';
+    card.dataset.scene = sc.scene;
+
+    const dur = sc.narration_seconds ? `${sc.narration_seconds}s` : '';
+    const voiceLabel = sc.voice_resolved + (sc.voice_style ? ` ← ${sc.voice_style}` : '');
+
+    card.innerHTML = `
+      <div class="scene-header">
+        <span class="scene-num">#${pad2(sc.scene)}</span>
+        <span class="scene-voice-badge" title="${escapeHtml(voiceLabel)}">${sc.voice_resolved}</span>
+        <span class="scene-duration">${dur}</span>
+        <span class="scene-status">대기</span>
+      </div>
+      <p class="scene-text">${escapeHtml(sc.narration_text)}</p>
+      <div class="scene-controls">
+        <button type="button" class="generate-scene">▶ 생성</button>
+        <audio class="hidden" controls preload="none"></audio>
+      </div>
+      <div class="scene-downloads hidden">
+        <a class="dl-wav download" download>⬇ wav</a>
+        <a class="dl-srt download" download>⬇ srt</a>
+      </div>
+    `;
+
+    card.querySelector('.generate-scene').addEventListener('click', () => generateScene(card, sc, chapter));
+    return card;
+  }
+
+  async function generateScene(card, sc, chapter) {
+    const btn = card.querySelector('.generate-scene');
+    const status = card.querySelector('.scene-status');
+    const audio = card.querySelector('audio');
+    const downloads = card.querySelector('.scene-downloads');
+
+    btn.disabled = true;
+    btn.textContent = '생성 중…';
+    status.textContent = '생성 중';
+    card.classList.remove('error', 'done');
+    card.classList.add('busy');
+
+    try {
+      const fd = new FormData();
+      fd.append('chapter', chapter);
+      fd.append('scene', sc.scene);
+      fd.append('text', sc.narration_text);
+
+      const vo = document.getElementById('voiceOverride').value;
+      if (vo) fd.append('voice', vo);
+      else if (sc.voice_resolved) fd.append('voice', sc.voice_resolved);
+
+      const sp = document.getElementById('batchSpeed').value;
+      if (sp) fd.append('speed', sp);
+      const ts = document.getElementById('batchTotalStep').value;
+      if (ts) fd.append('total_step', ts);
+      if (sc.narration_seconds) fd.append('narration_seconds', sc.narration_seconds);
+
+      const res = await fetch('/api/synthesize_scene', { method: 'POST', body: fd });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try { detail = (await res.json()).detail || detail; } catch {}
+        throw new Error(detail);
+      }
+      const data = await res.json();
+
+      const cacheBust = '?t=' + Date.now();
+      audio.src = data.wav_url + cacheBust;
+      audio.classList.remove('hidden');
+
+      const wavName = `ch${chapter}_${pad2(sc.scene)}_narration.wav`;
+      const srtName = `ch${chapter}_${pad2(sc.scene)}_narration.srt`;
+      const dlWav = card.querySelector('.dl-wav');
+      dlWav.href = data.wav_url; dlWav.download = wavName;
+      const dlSrt = card.querySelector('.dl-srt');
+      dlSrt.href = data.srt_url; dlSrt.download = srtName;
+      downloads.classList.remove('hidden');
+
+      status.textContent = `완료 (${data.duration_seconds.toFixed(1)}s)`;
+      card.classList.add('done');
+      btn.textContent = '↻ 재생성';
+      loadHealth();
+    } catch (e) {
+      status.textContent = `에러: ${e.message}`;
+      card.classList.add('error');
+      btn.textContent = '↻ 재시도';
+    } finally {
+      btn.disabled = false;
+      card.classList.remove('busy');
+    }
+  }
+
+  // ---- 전체 일괄 ----
   runBtn.addEventListener('click', async () => {
-    if (!selectedFile) return;
-    const errEl = document.getElementById('batchError');
-    const resEl = document.getElementById('batchResult');
+    if (!fileInput.files[0]) { showError('먼저 .json 파일을 올려주세요.'); return; }
+
     const progEl = document.getElementById('batchProgress');
     const bar = document.getElementById('bar');
     const ptext = document.getElementById('progressText');
-    errEl.classList.add('hidden');
-    resEl.classList.add('hidden');
+    const bulkLinks = document.getElementById('bulkLinks');
+    const warningList = document.getElementById('warningList');
+    clearError();
+    bulkLinks.classList.add('hidden');
+    warningList.innerHTML = '';
     progEl.classList.remove('hidden');
     bar.style.width = '0%';
     ptext.textContent = '제출 중…';
@@ -137,7 +281,7 @@
 
     try {
       const fd = new FormData();
-      fd.append('script', selectedFile);
+      fd.append('script', fileInput.files[0]);
       const ch = document.getElementById('chapterOverride').value.trim();
       if (ch) fd.append('chapter', ch);
       const vo = document.getElementById('voiceOverride').value;
@@ -156,7 +300,6 @@
       const job = await submit.json();
       ptext.textContent = `ch${job.chapter}: 0 / ${job.scene_count}`;
 
-      // 폴링
       while (true) {
         await new Promise(r => setTimeout(r, 1000));
         const sres = await fetch(job.status_url);
@@ -166,20 +309,50 @@
         bar.style.width = `${pct}%`;
         const cur = status.progress.current_scene;
         ptext.textContent = `ch${job.chapter}: ${status.progress.completed} / ${status.progress.total}` + (cur ? ` (scene ${cur})` : '');
+
         if (status.status === 'done') {
           progEl.classList.add('hidden');
-          document.getElementById('batchSummary').textContent =
-            `완료: ${status.files.length}개 파일 → ${status.output_dir}`;
-          const ul = document.getElementById('fileList');
-          ul.innerHTML = '';
-          status.files.forEach(f => { const li = document.createElement('li'); li.textContent = f; ul.appendChild(li); });
+          // 모든 scene 카드에 결과 채워주기
+          status.files.forEach(fname => {
+            const m = fname.match(/_(\d+)_narration\.wav$/);
+            if (!m) return;
+            const sceneNum = parseInt(m[1], 10);
+            const card = document.querySelector(`.scene-card[data-scene="${sceneNum}"]`);
+            if (!card) return;
+            const wavUrl = `/api/files/ch${job.chapter}/audio/${fname}`;
+            const srtName = fname.replace(/\.wav$/, '.srt');
+            const srtUrl = `/api/files/ch${job.chapter}/subtitles/${srtName}`;
+            const audio = card.querySelector('audio');
+            audio.src = wavUrl + '?t=' + Date.now();
+            audio.classList.remove('hidden');
+            const dlWav = card.querySelector('.dl-wav');
+            dlWav.href = wavUrl; dlWav.download = fname;
+            const dlSrt = card.querySelector('.dl-srt');
+            dlSrt.href = srtUrl; dlSrt.download = srtName;
+            card.querySelector('.scene-downloads').classList.remove('hidden');
+            card.querySelector('.scene-status').textContent = '완료';
+            card.classList.remove('error', 'busy');
+            card.classList.add('done');
+            const btn = card.querySelector('.generate-scene');
+            btn.textContent = '↻ 재생성';
+            btn.disabled = false;
+          });
+
           const zip = document.getElementById('zipLink');
           zip.href = `${job.status_url}/zip`;
-          zip.download = `ch${job.chapter}_audio.zip`;
-          const wl = document.getElementById('warningList');
-          wl.innerHTML = '';
-          status.warnings.forEach(w => { const li = document.createElement('li'); li.textContent = w; wl.appendChild(li); });
-          resEl.classList.remove('hidden');
+          zip.download = `ch${job.chapter}_bundle.zip`;
+          const srt = document.getElementById('srtLink');
+          srt.href = `/api/files/ch${job.chapter}/subtitles_full`;
+          srt.download = `ch${job.chapter}.srt`;
+          bulkLinks.classList.remove('hidden');
+
+          status.warnings.forEach(w => {
+            const li = document.createElement('li');
+            li.textContent = w;
+            warningList.appendChild(li);
+          });
+
+          loadHealth();
           break;
         }
         if (status.status === 'error') {
@@ -188,8 +361,7 @@
         }
       }
     } catch (e) {
-      errEl.textContent = `배치 실패: ${e.message}`;
-      errEl.classList.remove('hidden');
+      showError(`배치 실패: ${e.message}`);
       progEl.classList.add('hidden');
     } finally {
       runBtn.disabled = false;

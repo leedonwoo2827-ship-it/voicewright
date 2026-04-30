@@ -11,8 +11,16 @@ from typing import Awaitable, Callable
 from . import settings as settings_module
 from .audio_io import write_wav
 from .engine import Engine
-from .paths import chapter_audio_dir, narration_path, resolve_chapter_id
+from .paths import (
+    chapter_audio_dir,
+    chapter_srt_path,
+    chapter_subtitles_dir,
+    narration_path,
+    resolve_chapter_id,
+    srt_path,
+)
 from .schemas import Script
+from .srt import SrtEntry, make_chapter_srt, make_single_srt
 from .voices import VoiceMap, load_voice_map
 
 logger = logging.getLogger(__name__)
@@ -63,6 +71,8 @@ async def run_batch(
 
     out_dir = chapter_audio_dir(out_root, chapter_id)
     out_dir.mkdir(parents=True, exist_ok=True)
+    sub_dir = chapter_subtitles_dir(out_root, chapter_id)
+    sub_dir.mkdir(parents=True, exist_ok=True)
 
     started = datetime.now(timezone.utc)
     warnings: list[str] = []
@@ -95,6 +105,7 @@ async def run_batch(
     completed = 0
     files: list[str] = []
     scene_lookup = {sc.scene: sc for sc in script.scenes}
+    actual_durations: dict[int, float] = {}
 
     for voice_code, scene_numbers in voice_groups.items():
         for i in range(0, len(scene_numbers), chunk_size):
@@ -116,11 +127,34 @@ async def run_batch(
                 out_path = narration_path(out_root, chapter_id, scene_num)
                 write_wav(out_path, wav, engine.sample_rate)
                 files.append(out_path.name)
+
+                # 개별 scene SRT (단일 블록)
+                actual_dur = float(len(wav)) / float(engine.sample_rate)
+                actual_durations[scene_num] = actual_dur
+                scene_obj = scene_lookup[scene_num]
+                dur_for_srt = scene_obj.narration_seconds or actual_dur
+                srt_text = make_single_srt(scene_obj.narration_text, dur_for_srt)
+                srt_p = srt_path(out_root, chapter_id, scene_num)
+                srt_p.write_text(srt_text, encoding="utf-8")
+
                 completed += 1
                 if on_progress is not None:
                     res = on_progress(completed, total, scene_num)
                     if hasattr(res, "__await__"):
                         await res
+
+    # 챕터 전체 SRT (누적 타임코드)
+    sorted_scenes = sorted(script.scenes, key=lambda sc: sc.scene)
+    entries = [
+        SrtEntry(
+            scene=sc.scene,
+            text=sc.narration_text,
+            duration=sc.narration_seconds or actual_durations.get(sc.scene, 0.0),
+        )
+        for sc in sorted_scenes
+    ]
+    chapter_srt_text = make_chapter_srt(entries)
+    chapter_srt_path(out_root, chapter_id).write_text(chapter_srt_text, encoding="utf-8")
 
     files.sort()
     return BatchResult(

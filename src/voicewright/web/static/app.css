@@ -150,6 +150,103 @@ code {
   font-size: 13px;
 }
 
+/* ---- 배치 옵션 + 액션 바 ---- */
+#batchOptions { margin-top: 20px; }
+.batch-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+#bulkLinks { display: inline-flex; gap: 8px; }
+
+/* ---- scene 카드 리스트 ---- */
+.scene-list {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.scene-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.scene-card.busy { border-left-color: var(--accent); background: #fafaff; }
+.scene-card.done { border-left-color: var(--ok); }
+.scene-card.error { border-left-color: var(--error); background: #fff5f5; }
+
+.scene-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.scene-num {
+  font-weight: 700;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  color: var(--fg);
+}
+.scene-voice-badge {
+  background: var(--code-bg);
+  color: var(--fg);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.scene-duration { color: var(--muted); font-size: 12px; }
+.scene-status {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.scene-card.done .scene-status { color: var(--ok); font-weight: 600; }
+.scene-card.error .scene-status { color: var(--error); font-weight: 600; }
+
+.scene-text {
+  margin: 6px 0 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg);
+  white-space: pre-wrap;
+}
+.scene-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.scene-controls audio { flex: 1; min-width: 200px; max-width: 480px; height: 32px; }
+.generate-scene {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: 5px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.generate-scene:disabled { background: #aaa; cursor: not-allowed; }
+.generate-scene:hover:not(:disabled) { filter: brightness(0.95); }
+
+.scene-downloads {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+.scene-downloads .download {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
 footer {
   margin-top: 40px;
   padding: 16px 32px;

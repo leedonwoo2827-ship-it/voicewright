@@ -44,9 +44,25 @@ def chapter_audio_dir(workspace_root: Path, chapter_id: str) -> Path:
     return Path(workspace_root) / f"ch{chapter_id}" / "audio"
 
 
+def chapter_subtitles_dir(workspace_root: Path, chapter_id: str) -> Path:
+    return Path(workspace_root) / f"ch{chapter_id}" / "subtitles"
+
+
 def narration_filename(chapter_id: str, scene: int) -> str:
     return f"ch{chapter_id}_{scene:02d}_narration.wav"
 
 
 def narration_path(workspace_root: Path, chapter_id: str, scene: int) -> Path:
     return chapter_audio_dir(workspace_root, chapter_id) / narration_filename(chapter_id, scene)
+
+
+def srt_filename(chapter_id: str, scene: int) -> str:
+    return f"ch{chapter_id}_{scene:02d}_narration.srt"
+
+
+def srt_path(workspace_root: Path, chapter_id: str, scene: int) -> Path:
+    return chapter_subtitles_dir(workspace_root, chapter_id) / srt_filename(chapter_id, scene)
+
+
+def chapter_srt_path(workspace_root: Path, chapter_id: str) -> Path:
+    return chapter_subtitles_dir(workspace_root, chapter_id) / f"ch{chapter_id}.srt"

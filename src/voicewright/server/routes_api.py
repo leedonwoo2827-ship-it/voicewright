@@ -8,13 +8,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Response, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from .. import settings as settings_module
 from ..audio_io import to_wav_bytes
 from ..batch import parse_script, run_batch
 from ..engine import Engine
-from ..paths import resolve_chapter_id
+from ..paths import (
+    chapter_audio_dir,
+    chapter_srt_path,
+    chapter_subtitles_dir,
+    narration_path,
+    resolve_chapter_id,
+    srt_path,
+)
 from ..schemas import (
     BatchSubmitResponse,
     JobStatus,
@@ -22,6 +29,7 @@ from ..schemas import (
     VoiceInfoOut,
     VoiceListResponse,
 )
+from ..srt import make_single_srt
 from ..voices import ALL_VOICE_CODES, load_voice_map
 from .jobs import JobRecord, get_registry
 
@@ -188,19 +196,144 @@ async def get_job_zip(job_id: str) -> StreamingResponse:
     if rec.status != "done":
         raise HTTPException(status_code=409, detail=f"job not done (status={rec.status})")
 
-    out_dir = Path(rec.output_dir)
+    s = settings_module.load()
+    audio_dir = chapter_audio_dir(s.workspace_root, rec.chapter)
+    sub_dir = chapter_subtitles_dir(s.workspace_root, rec.chapter)
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for fname in rec.files:
-            p = out_dir / fname
-            if p.exists():
-                zf.write(p, arcname=fname)
+        if audio_dir.exists():
+            for p in sorted(audio_dir.glob("*.wav")):
+                zf.write(p, arcname=f"audio/{p.name}")
+        if sub_dir.exists():
+            for p in sorted(sub_dir.glob("*.srt")):
+                zf.write(p, arcname=f"subtitles/{p.name}")
     buf.seek(0)
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="ch{rec.chapter}_audio.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="ch{rec.chapter}_bundle.zip"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Scene-by-scene UI: parse → list scenes, synthesize one at a time, serve files
+# ---------------------------------------------------------------------------
+
+@router.post("/parse_script")
+async def parse_script_endpoint(
+    script: UploadFile = File(...),
+    chapter: str | None = Form(None),
+) -> dict:
+    raw = await script.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="empty script file")
+    try:
+        parsed = parse_script(raw)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"invalid script JSON: {exc}") from exc
+    try:
+        chapter_id = resolve_chapter_id(
+            explicit=chapter,
+            script_field=parsed.chapter,
+            filename_hint=script.filename,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    s = settings_module.load()
+    vmap = load_voice_map(s.voice_map_path)
+    scenes_out = []
+    for sc in parsed.scenes:
+        code, _ = vmap.resolve(sc.voice_style)
+        scenes_out.append({
+            "scene": sc.scene,
+            "narration_text": sc.narration_text,
+            "narration_seconds": sc.narration_seconds,
+            "voice_style": sc.voice_style,
+            "voice_resolved": code,
+            "image_filename": sc.image_filename,
+        })
+    return {"chapter": chapter_id, "scenes": scenes_out}
+
+
+@router.post("/synthesize_scene")
+async def synthesize_scene(
+    chapter: str = Form(...),
+    scene: int = Form(...),
+    text: str = Form(...),
+    voice: str | None = Form(None),
+    voice_style: str | None = Form(None),
+    speed: float | None = Form(None),
+    total_step: int | None = Form(None),
+    narration_seconds: float | None = Form(None),
+    output_root: str | None = Form(None),
+) -> dict:
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="empty narration_text")
+
+    engine = await Engine.get()
+    s = settings_module.load()
+    vmap = load_voice_map(s.voice_map_path)
+
+    if voice:
+        voice_code = voice.upper()
+        if voice_code not in ALL_VOICE_CODES:
+            raise HTTPException(status_code=422, detail=f"unknown voice: {voice}")
+    else:
+        voice_code, _ = vmap.resolve(voice_style)
+
+    out_root = Path(output_root) if output_root else s.workspace_root
+
+    try:
+        wav = await engine.synth(text, voice_code=voice_code, total_step=total_step, speed=speed)
+    except Exception as exc:
+        logger.exception("synthesize_scene 실패: ch%s scene %s", chapter, scene)
+        raise HTTPException(status_code=500, detail=f"synthesis failed: {exc}") from exc
+
+    from ..audio_io import write_wav as _write_wav
+    wav_path = narration_path(out_root, chapter, int(scene))
+    _write_wav(wav_path, wav, engine.sample_rate)
+
+    actual_duration = float(len(wav)) / float(engine.sample_rate)
+    dur_for_srt = narration_seconds if narration_seconds else actual_duration
+    srt_text = make_single_srt(text, dur_for_srt)
+    srt_p = srt_path(out_root, chapter, int(scene))
+    srt_p.parent.mkdir(parents=True, exist_ok=True)
+    srt_p.write_text(srt_text, encoding="utf-8")
+
+    return {
+        "chapter": chapter,
+        "scene": int(scene),
+        "voice": voice_code,
+        "duration_seconds": actual_duration,
+        "wav_url": f"/api/files/ch{chapter}/audio/{wav_path.name}",
+        "srt_url": f"/api/files/ch{chapter}/subtitles/{srt_p.name}",
+    }
+
+
+@router.get("/files/ch{chapter_id}/{kind}/{filename}")
+async def serve_workspace_file(chapter_id: str, kind: str, filename: str) -> FileResponse:
+    if kind not in ("audio", "subtitles"):
+        raise HTTPException(status_code=404, detail="unknown kind")
+    if "/" in filename or "\\" in filename or filename.startswith(".."):
+        raise HTTPException(status_code=400, detail="invalid filename")
+    s = settings_module.load()
+    base = s.workspace_root / f"ch{chapter_id}" / kind
+    p = base / filename
+    if not p.exists() or not p.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    media = "audio/wav" if kind == "audio" else "text/plain; charset=utf-8"
+    return FileResponse(str(p), media_type=media, filename=filename)
+
+
+@router.get("/files/ch{chapter_id}/subtitles_full")
+async def serve_chapter_srt(chapter_id: str) -> FileResponse:
+    s = settings_module.load()
+    p = chapter_srt_path(s.workspace_root, chapter_id)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="chapter SRT not generated yet")
+    return FileResponse(str(p), media_type="text/plain; charset=utf-8", filename=f"ch{chapter_id}.srt")
 
 
 @router.get("/health")
