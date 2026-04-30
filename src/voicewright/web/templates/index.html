@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>voicewright — 로컬 한국어 TTS</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header>
+    <h1>voicewright</h1>
+    <p class="subtitle">로컬 한국어 TTS · Supertonic 기반 · scriptforge → sceneweaver 파이프라인용</p>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="single">자유 텍스트</button>
+    <button class="tab" data-tab="batch">대본 일괄 (batch)</button>
+  </nav>
+
+  <main>
+    <!-- 자유 텍스트 -->
+    <section id="tab-single" class="tab-panel active">
+      <label for="text">텍스트</label>
+      <textarea id="text" rows="5" placeholder="합성할 한국어 문장을 입력하세요. 안녕하세요. 반갑습니다."></textarea>
+
+      <div class="row">
+        <div class="field">
+          <label for="voice">보이스</label>
+          <select id="voice"></select>
+        </div>
+        <div class="field">
+          <label for="speed">속도 <span id="speedValue">1.05</span></label>
+          <input id="speed" type="range" min="0.8" max="1.3" step="0.05" value="1.05">
+        </div>
+        <div class="field">
+          <label for="totalStep">품질 (steps) <span id="stepValue">5</span></label>
+          <input id="totalStep" type="range" min="3" max="15" step="1" value="5">
+        </div>
+      </div>
+
+      <button id="generate" class="primary">생성</button>
+
+      <div id="singleResult" class="result hidden">
+        <audio id="audio" controls></audio>
+        <a id="downloadLink" class="download" download="synth.wav">wav 다운로드</a>
+      </div>
+      <div id="singleError" class="error hidden"></div>
+    </section>
+
+    <!-- 배치 -->
+    <section id="tab-batch" class="tab-panel">
+      <p class="hint">scriptforge가 만든 <code>ch{NN}_script.json</code> 파일을 끌어다 놓거나 선택하면, 모든 scene을 합성해 <code>workspace/ch{NN}/audio/</code>에 저장합니다. 끝나면 zip으로 일괄 다운로드도 가능.</p>
+
+      <div id="dropzone" class="dropzone">
+        <p>여기에 <code>.json</code> 파일을 끌어놓거나 클릭해서 선택</p>
+        <input id="fileInput" type="file" accept=".json,application/json" hidden>
+        <p id="fileName" class="filename"></p>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="chapterOverride">챕터 강제 (선택)</label>
+          <input id="chapterOverride" type="text" placeholder="예: 05">
+        </div>
+        <div class="field">
+          <label for="voiceOverride">보이스 강제 (선택)</label>
+          <select id="voiceOverride"><option value="">scene별 voice_style 사용</option></select>
+        </div>
+        <div class="field">
+          <label for="batchSpeed">속도 <span id="batchSpeedValue">1.05</span></label>
+          <input id="batchSpeed" type="range" min="0.8" max="1.3" step="0.05" value="1.05">
+        </div>
+      </div>
+
+      <button id="runBatch" class="primary" disabled>일괄 생성 시작</button>
+
+      <div id="batchProgress" class="progress hidden">
+        <div class="bar"><div id="bar" class="fill" style="width:0%"></div></div>
+        <p id="progressText"></p>
+      </div>
+
+      <div id="batchResult" class="result hidden">
+        <p id="batchSummary"></p>
+        <ul id="fileList"></ul>
+        <a id="zipLink" class="download" download>전체 zip 다운로드</a>
+        <ul id="warningList" class="warnings"></ul>
+      </div>
+      <div id="batchError" class="error hidden"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Engine: <span id="engineInfo">로딩 중…</span></p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

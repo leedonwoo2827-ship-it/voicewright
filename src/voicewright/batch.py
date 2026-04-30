@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+import json
+import logging
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Awaitable, Callable
+
+from . import settings as settings_module
+from .audio_io import write_wav
+from .engine import Engine
+from .paths import chapter_audio_dir, narration_path, resolve_chapter_id
+from .schemas import Script
+from .voices import VoiceMap, load_voice_map
+
+logger = logging.getLogger(__name__)
+
+ProgressCb = Callable[[int, int, int | None], Awaitable[None] | None]
+WarningCb = Callable[[str], None]
+
+
+@dataclass
+class BatchResult:
+    chapter_id: str
+    output_dir: Path
+    files: list[str]
+    warnings: list[str]
+    started_at: datetime
+    finished_at: datetime
+
+
+def parse_script(raw: bytes | str) -> Script:
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    data = json.loads(raw)
+    return Script.model_validate(data)
+
+
+async def run_batch(
+    *,
+    engine: Engine,
+    voice_map: VoiceMap | None = None,
+    script: Script,
+    chapter_id_explicit: str | int | None = None,
+    filename_hint: str | None = None,
+    output_root: Path | None = None,
+    voice_override: str | None = None,
+    speed: float | None = None,
+    total_step: int | None = None,
+    on_progress: ProgressCb | None = None,
+) -> BatchResult:
+    s = settings_module.load()
+    vmap = voice_map if voice_map is not None else load_voice_map(s.voice_map_path)
+    out_root = Path(output_root) if output_root else s.workspace_root
+
+    chapter_id = resolve_chapter_id(
+        explicit=chapter_id_explicit,
+        script_field=script.chapter,
+        filename_hint=filename_hint,
+    )
+
+    out_dir = chapter_audio_dir(out_root, chapter_id)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    started = datetime.now(timezone.utc)
+    warnings: list[str] = []
+    seen_warnings: set[str] = set()
+
+    def warn(msg: str) -> None:
+        if msg not in seen_warnings:
+            seen_warnings.add(msg)
+            warnings.append(msg)
+            logger.warning(msg)
+
+    # 1) scene별 보이스 결정 (override 우선)
+    scene_voice: dict[int, str] = {}
+    for scene in script.scenes:
+        if voice_override:
+            scene_voice[scene.scene] = voice_override.upper()
+        else:
+            code, w = vmap.resolve(scene.voice_style)
+            scene_voice[scene.scene] = code
+            if w:
+                warn(w)
+
+    # 2) 같은 보이스끼리 묶어서 배치 처리 (효율 + Supertonic 단일 스타일 제약)
+    voice_groups: dict[str, list[int]] = defaultdict(list)
+    for scene in script.scenes:
+        voice_groups[scene_voice[scene.scene]].append(scene.scene)
+
+    chunk_size = s.batch_chunk_size
+    total = len(script.scenes)
+    completed = 0
+    files: list[str] = []
+    scene_lookup = {sc.scene: sc for sc in script.scenes}
+
+    for voice_code, scene_numbers in voice_groups.items():
+        for i in range(0, len(scene_numbers), chunk_size):
+            chunk_scenes = scene_numbers[i : i + chunk_size]
+            text_list = [scene_lookup[n].narration_text for n in chunk_scenes]
+
+            try:
+                wavs = await engine.synth_batch_same_voice(
+                    text_list,
+                    voice_code=voice_code,
+                    total_step=total_step,
+                    speed=speed,
+                )
+            except Exception as exc:
+                logger.exception("배치 합성 실패: voice=%s, scenes=%s", voice_code, chunk_scenes)
+                raise RuntimeError(f"합성 실패 (voice={voice_code}, scenes={chunk_scenes}): {exc}") from exc
+
+            for scene_num, wav in zip(chunk_scenes, wavs):
+                out_path = narration_path(out_root, chapter_id, scene_num)
+                write_wav(out_path, wav, engine.sample_rate)
+                files.append(out_path.name)
+                completed += 1
+                if on_progress is not None:
+                    res = on_progress(completed, total, scene_num)
+                    if hasattr(res, "__await__"):
+                        await res
+
+    files.sort()
+    return BatchResult(
+        chapter_id=chapter_id,
+        output_dir=out_dir,
+        files=files,
+        warnings=warnings,
+        started_at=started,
+        finished_at=datetime.now(timezone.utc),
+    )
