@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class SynthesizeRequest(BaseModel):
@@ -28,13 +28,13 @@ class VoiceListResponse(BaseModel):
 
 
 class ScriptScene(BaseModel):
-    scene: int
-    narration_text: str
-    narration_seconds: float | None = None
+    scene: int = Field(..., validation_alias=AliasChoices("scene", "scene_number"))
+    narration_text: str = Field(..., validation_alias=AliasChoices("narration_text", "narration", "text"))
+    narration_seconds: float | None = Field(default=None, validation_alias=AliasChoices("narration_seconds", "duration", "duration_seconds"))
     voice_style: str | None = None
-    image_filename: str | None = None
+    image_filename: str | None = Field(default=None, validation_alias=AliasChoices("image_filename", "image", "image_file"))
 
-    model_config = {"extra": "ignore"}
+    model_config = {"extra": "ignore", "populate_by_name": True}
 
 
 class Script(BaseModel):
