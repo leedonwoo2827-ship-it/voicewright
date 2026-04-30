@@ -31,6 +31,7 @@ class Settings:
     onnx_dir: Path
     voice_styles_dir: Path
     voice_map_path: Path
+    pronunciation_map_path: Path
     workspace_root: Path
     use_gpu_mode: str            # "auto" | "1" | "0" (true/false도 허용)
     default_speed: float
@@ -63,6 +64,7 @@ def load() -> Settings:
         onnx_dir=onnx_dir,
         voice_styles_dir=assets / "voice_styles",
         voice_map_path=_env_path("VOICEWRIGHT_VOICE_MAP", root / "config" / "voice_map.yaml"),
+        pronunciation_map_path=_env_path("VOICEWRIGHT_PRONUNCIATION_MAP", root / "config" / "pronunciation_map.yaml"),
         workspace_root=_env_path("VOICEWRIGHT_WORKSPACE", root / "workspace"),
         use_gpu_mode=_env_str("VOICEWRIGHT_USE_GPU", "auto"),
         default_speed=float(_env_str("VOICEWRIGHT_DEFAULT_SPEED", "1.05")),

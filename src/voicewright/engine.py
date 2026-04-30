@@ -14,6 +14,7 @@ from ._vendor.supertonic_helper import (
     load_text_to_speech_with_providers,
     load_voice_style,
 )
+from .pronunciation import PronunciationMap, load_pronunciation_map
 from .voices import voice_preset_path
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,19 @@ class Engine:
         self.sample_rate: int = int(self._tts.sample_rate)
         self._voice_styles_dir = voice_styles_dir
         self._style_cache: dict[str, Style] = {}
+        self._pmap: PronunciationMap | None = None
+        self._pmap_mtime: float = -1.0
+
+    def _get_pmap(self) -> PronunciationMap:
+        s = settings_module.load()
+        path = s.pronunciation_map_path
+        mtime = path.stat().st_mtime if path.exists() else 0.0
+        if self._pmap is None or mtime != self._pmap_mtime:
+            self._pmap = load_pronunciation_map(path)
+            self._pmap_mtime = mtime
+            if self._pmap.rules:
+                logger.info("pronunciation_map loaded: %d rules", len(self._pmap.rules))
+        return self._pmap
 
     @classmethod
     async def get(cls) -> "Engine":
@@ -110,6 +124,7 @@ class Engine:
         s = settings_module.load()
         ts = total_step if total_step is not None else s.default_total_step
         sp = speed if speed is not None else s.default_speed
+        text = self._get_pmap().apply(text)
         style = self._style_for(voice_code)
         async with self._infer_lock:
             wav, dur = await asyncio.to_thread(self._tts, text, lang, style, ts, sp)
@@ -127,6 +142,8 @@ class Engine:
         s = settings_module.load()
         ts = total_step if total_step is not None else s.default_total_step
         sp = speed if speed is not None else s.default_speed
+        pmap = self._get_pmap()
+        text_list = [pmap.apply(t) for t in text_list]
         style = self._styles_for([voice_code] * len(text_list))
         lang_list = [lang] * len(text_list)
         async with self._infer_lock:

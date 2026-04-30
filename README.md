@@ -125,7 +125,31 @@ voicewright serve
 
 ---
 
-## 보이스 매핑
+## 발음 사전 (config\pronunciation_map.yaml)
+
+Supertonic은 영문 약자를 음절 단위로 읽는 경향이 있습니다 (예: `MOOC` → "엠오오씨"). 자연스러운 한국어 발음을 위해 합성 직전에 자동 치환되는 사전을 둡니다.
+
+```yaml
+# config/pronunciation_map.yaml
+rules:
+  MOOC: 무크
+  AI: 에이아이
+  CERN: 세른
+  BBC: 비비씨
+  GPU: 지피유
+  # 새 약자가 등장하면 한 줄 추가
+```
+
+특징:
+- **단어 경계 매칭** — `MOOC` 는 잡지만 `MOOCAR` 같은 합성어는 안 잡힘
+- **SRT 자막에는 적용되지 않음** — 자막에는 항상 원본 텍스트가 들어갑니다
+- **사용자 편집 우선** — 카드의 textarea에서 직접 발음을 고친 경우, 그 텍스트가 우선 사용됩니다
+- **즉시 반영** — yaml 수정 후 서버 재시작 불필요. 다음 합성 호출에 적용됨
+- 우선순위: 사용자 텍스트 편집 > pronunciation_map > 원본 narration_text
+
+기본 사전에 학습/방송/IT/기관/포맷 관련 일반적인 약자가 미리 들어있고, 본인 콘텐츠에 자주 등장하는 단어를 자유롭게 추가하시면 됩니다.
+
+## 보이스 매핑 (config\voice_map.yaml)
 
 scriptforge가 각 scene에 적은 `voice_style` 문자열을 Supertonic 보이스 코드(M1-M5 / F1-F5)로 변환합니다.
 
