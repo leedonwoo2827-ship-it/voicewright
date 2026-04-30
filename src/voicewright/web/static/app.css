@@ -68,21 +68,23 @@ main { padding: 24px 32px; max-width: 1500px; }
   align-self: start;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  margin-top: -24px;          /* main padding-top 상쇄, 화면 좌상단까지 끌어올림 */
 }
 .batch-left .dropzone {
-  padding: 14px 12px;
+  padding: 10px 12px;
 }
-.batch-left .dropzone p { margin: 0; font-size: 13px; }
-.batch-left .filename { margin: 6px 0 0; font-size: 12px; }
+.batch-left .dropzone p { margin: 0; font-size: 12px; }
+.batch-left .filename { margin: 4px 0 0; font-size: 12px; }
 .batch-left .field { margin: 0; }
 .batch-left label {
-  margin: 0 0 2px;
-  font-size: 12px;
+  margin: 0 0 1px;
+  font-size: 11px;
+  line-height: 1.2;
 }
 .batch-left input[type=text],
 .batch-left select {
-  padding: 5px 8px;
+  padding: 4px 8px;
   font-size: 13px;
 }
 .batch-left input[type=range] { margin: 0; padding: 0; }
@@ -198,27 +200,27 @@ code {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 #batchOptions button.primary {
-  margin-top: 4px;
-  padding: 7px 14px;
+  margin-top: 2px;
+  padding: 6px 12px;
   font-size: 13px;
 }
 .batch-actions { margin: 0; }
 .bulk-links {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 4px 0 0;
+  gap: 2px;
+  margin: 2px 0 0;
 }
-.bulk-links .download { font-size: 12px; padding: 5px 10px; }
-#batchProgress { margin: 4px 0 0; }
-#batchProgress p { margin: 4px 0 0; font-size: 12px; }
-#warningList { margin: 4px 0 0; }
+.bulk-links .download { font-size: 12px; padding: 4px 8px; }
+#batchProgress { margin: 2px 0 0; }
+#batchProgress p { margin: 2px 0 0; font-size: 12px; }
+#warningList { margin: 2px 0 0; padding-left: 16px; }
 
 /* ---- scene 카드 리스트 ---- */
 .scene-list {
