@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import pytest
 import yaml
 
 from voicewright.voices import VoiceMap, load_voice_map, ALL_VOICE_CODES
