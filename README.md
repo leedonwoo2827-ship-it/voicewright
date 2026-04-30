@@ -7,7 +7,22 @@ scriptforge가 만든 `ch{NN}_script.json`을 받아 모든 scene의 한국어 �
 
 ---
 
-## 설치 (한 번만)
+## 빠른 시작 (Windows, 더블클릭)
+
+레포 클론 후:
+
+| 파일 | 동작 |
+|---|---|
+| **`install.bat`** | venv 생성 → GPU 자동 감지 → 의존성 설치 → 모델 다운로드(~250MB) → doctor |
+| **`start.bat`** | 웹 UI 실행 (`http://localhost:7878`) |
+| `doctor.bat` | 환경 점검 (GPU/CPU 모드, sample rate 확인) |
+
+> 사전 요구: [Python 3.11+](https://python.org), [git](https://git-scm.com), [git-lfs](https://git-lfs.com)
+> NVIDIA GPU가 있으면 자동으로 GPU(CUDA) 모드로 설치, 없으면 CPU 모드로 설치됩니다.
+
+---
+
+## 설치 (수동, 한 번만)
 
 ### 1. 가상환경 만들기
 
