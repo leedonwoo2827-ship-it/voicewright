@@ -76,7 +76,7 @@ main { padding: 24px 32px; max-width: 1500px; }
 }
 .batch-left .dropzone p { margin: 0; font-size: 12px; }
 .batch-left .filename { margin: 4px 0 0; font-size: 12px; }
-.batch-left .field { margin: 0; }
+.batch-left .field { margin: 0; flex: 0 0 auto; min-width: 0; }
 .batch-left label {
   margin: 0 0 1px;
   font-size: 11px;
