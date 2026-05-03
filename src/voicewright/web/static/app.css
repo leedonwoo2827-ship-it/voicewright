@@ -270,9 +270,30 @@ code {
 .scene-card.done .scene-status { color: var(--ok); font-weight: 600; }
 .scene-card.error .scene-status { color: var(--error); font-weight: 600; }
 
-.scene-text-edit {
+.scene-text-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 6px 0 8px;
+}
+@media (max-width: 900px) {
+  .scene-text-grid { grid-template-columns: 1fr; }
+}
+.scene-text-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.scene-text-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.scene-text-label .label-title { font-weight: 600; color: var(--fg); }
+.scene-text-label .label-title small { font-weight: 400; color: var(--muted); margin-left: 3px; }
+.scene-text-label .label-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+
+.scene-pron-edit, .scene-srt-edit {
   width: 100%;
-  margin: 6px 0 4px;
   padding: 8px 10px;
   font-family: inherit;
   font-size: 14px;
@@ -285,39 +306,49 @@ code {
   min-height: 60px;
   box-sizing: border-box;
 }
-.scene-text-edit:focus {
+.scene-pron-edit:focus, .scene-srt-edit:focus {
   outline: none;
   border-color: var(--accent);
   background: #fff;
 }
-.scene-card.text-modified .scene-text-edit { background: #fffbea; border-color: #d4a017; }
-.scene-card.text-modified .scene-num::after {
+.scene-card.pron-modified .scene-pron-edit,
+.scene-card.srt-modified .scene-srt-edit {
+  background: #fffbea;
+  border-color: #d4a017;
+}
+.scene-card.pron-modified .scene-num::after,
+.scene-card.srt-modified .scene-num::after {
   content: ' ✎';
   color: #b8860b;
   font-weight: 400;
 }
 
-.scene-meta-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+.to-pronunciation {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: var(--accent);
+  padding: 3px 10px;
   font-size: 11px;
-  color: var(--muted);
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
 }
-.reset-text {
+.to-pronunciation:hover:not(:disabled) { background: #e0e7ff; }
+.to-pronunciation:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.reset-pron, .reset-srt {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--muted);
-  padding: 3px 10px;
+  padding: 3px 8px;
   font-size: 11px;
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
 }
-.reset-text:hover { color: var(--fg); border-color: var(--fg); }
-.reset-text:disabled { opacity: 0.4; cursor: not-allowed; }
+.reset-pron:hover, .reset-srt:hover { color: var(--fg); border-color: var(--fg); }
+.reset-pron:disabled, .reset-srt:disabled { opacity: 0.4; cursor: not-allowed; }
 .scene-controls {
   display: flex;
   gap: 12px;

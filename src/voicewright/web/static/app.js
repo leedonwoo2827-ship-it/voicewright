@@ -185,10 +185,26 @@
         <span class="scene-duration">${dur}</span>
         <span class="scene-status">대기</span>
       </div>
-      <textarea class="scene-text-edit" rows="3" spellcheck="false"></textarea>
-      <div class="scene-meta-row">
-        <span class="hint-mini">발음용 텍스트만 편집 — SRT 자막엔 항상 원본이 들어갑니다.</span>
-        <button type="button" class="reset-text" disabled>↺ 원본 복원</button>
+      <div class="scene-text-grid">
+        <div class="scene-text-col scene-text-pron">
+          <div class="scene-text-label">
+            <span class="label-title">발음 <small>(TTS 입력)</small></span>
+            <div class="label-actions">
+              <button type="button" class="to-pronunciation" title="영문 약자를 한국어 발음으로 자동 전환">한국어 발음 전환</button>
+              <button type="button" class="reset-pron" disabled>↺ 원본</button>
+            </div>
+          </div>
+          <textarea class="scene-pron-edit" rows="3" spellcheck="false"></textarea>
+        </div>
+        <div class="scene-text-col scene-text-srt">
+          <div class="scene-text-label">
+            <span class="label-title">자막 <small>(SRT 출력)</small></span>
+            <div class="label-actions">
+              <button type="button" class="reset-srt" disabled>↺ 원본</button>
+            </div>
+          </div>
+          <textarea class="scene-srt-edit" rows="3" spellcheck="false"></textarea>
+        </div>
       </div>
       <div class="scene-controls">
         <button type="button" class="generate-scene">▶ 생성</button>
@@ -200,18 +216,65 @@
       </div>
     `;
 
-    const ta = card.querySelector('.scene-text-edit');
-    const resetBtn = card.querySelector('.reset-text');
-    ta.value = sc.narration_text;
-    ta.addEventListener('input', () => {
-      const modified = ta.value !== sc.narration_text;
-      card.classList.toggle('text-modified', modified);
-      resetBtn.disabled = !modified;
+    const pronTa = card.querySelector('.scene-pron-edit');
+    const srtTa = card.querySelector('.scene-srt-edit');
+    const resetPronBtn = card.querySelector('.reset-pron');
+    const resetSrtBtn = card.querySelector('.reset-srt');
+    const toPronBtn = card.querySelector('.to-pronunciation');
+
+    pronTa.value = sc.narration_text;
+    srtTa.value = sc.narration_text;
+
+    pronTa.addEventListener('input', () => {
+      const modified = pronTa.value !== sc.narration_text;
+      card.classList.toggle('pron-modified', modified);
+      resetPronBtn.disabled = !modified;
     });
-    resetBtn.addEventListener('click', () => {
-      ta.value = sc.narration_text;
-      card.classList.remove('text-modified');
-      resetBtn.disabled = true;
+    srtTa.addEventListener('input', () => {
+      const modified = srtTa.value !== sc.narration_text;
+      card.classList.toggle('srt-modified', modified);
+      resetSrtBtn.disabled = !modified;
+    });
+    resetPronBtn.addEventListener('click', () => {
+      pronTa.value = sc.narration_text;
+      card.classList.remove('pron-modified');
+      resetPronBtn.disabled = true;
+    });
+    resetSrtBtn.addEventListener('click', () => {
+      srtTa.value = sc.narration_text;
+      card.classList.remove('srt-modified');
+      resetSrtBtn.disabled = true;
+    });
+
+    toPronBtn.addEventListener('click', async () => {
+      const original = pronTa.value;
+      if (!original.trim()) return;
+      toPronBtn.disabled = true;
+      const oldLabel = toPronBtn.textContent;
+      toPronBtn.textContent = '전환 중…';
+      try {
+        const res = await fetch('/api/to_pronunciation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: original }),
+        });
+        if (!res.ok) {
+          let detail = res.statusText;
+          try { detail = (await res.json()).detail || detail; } catch {}
+          throw new Error(detail);
+        }
+        const data = await res.json();
+        if (data.text && data.text !== original) {
+          pronTa.value = data.text;
+          pronTa.dispatchEvent(new Event('input'));
+        }
+      } catch (e) {
+        console.error('to_pronunciation failed', e);
+        alert(`발음 전환 실패: ${e.message}`);
+      } finally {
+        toPronBtn.disabled = false;
+        toPronBtn.textContent = oldLabel;
+      }
     });
 
     card.querySelector('.generate-scene').addEventListener('click', () => generateScene(card, sc, chapter));
@@ -231,12 +294,13 @@
     card.classList.add('busy');
 
     try {
-      const editedText = card.querySelector('.scene-text-edit').value.trim() || sc.narration_text;
+      const pronText = card.querySelector('.scene-pron-edit').value.trim() || sc.narration_text;
+      const srtText = card.querySelector('.scene-srt-edit').value.trim() || sc.narration_text;
       const fd = new FormData();
       fd.append('chapter', chapter);
       fd.append('scene', sc.scene);
-      fd.append('text', editedText);                 // 합성에 쓸 (편집 가능한) 텍스트
-      fd.append('srt_text', sc.narration_text);      // SRT엔 항상 원본 텍스트
+      fd.append('text', pronText);          // TTS 합성에 쓸 발음 텍스트
+      fd.append('srt_text', srtText);       // SRT 자막에 들어갈 텍스트
 
       const vo = document.getElementById('voiceOverride').value;
       if (vo) fd.append('voice', vo);

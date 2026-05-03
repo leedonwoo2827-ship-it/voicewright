@@ -10,10 +10,13 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Response, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse
 
+from pydantic import BaseModel, Field
+
 from .. import settings as settings_module
 from ..audio_io import to_wav_bytes
 from ..batch import parse_script, run_batch
 from ..engine import Engine
+from ..pronunciation import load_pronunciation_map
 from ..paths import (
     chapter_audio_dir,
     chapter_srt_path,
@@ -336,6 +339,24 @@ async def serve_chapter_srt(chapter_id: str) -> FileResponse:
     if not p.exists():
         raise HTTPException(status_code=404, detail="chapter SRT not generated yet")
     return FileResponse(str(p), media_type="text/plain; charset=utf-8", filename=f"ch{chapter_id}.srt")
+
+
+class ToPronunciationRequest(BaseModel):
+    text: str = Field(..., max_length=5000)
+
+
+class ToPronunciationResponse(BaseModel):
+    text: str
+
+
+@router.post("/to_pronunciation", response_model=ToPronunciationResponse)
+async def to_pronunciation(req: ToPronunciationRequest) -> ToPronunciationResponse:
+    """발음 사전 + 미등록 영문 대문자 약어 음역을 적용해 반환."""
+    if not req.text.strip():
+        return ToPronunciationResponse(text="")
+    s = settings_module.load()
+    pmap = load_pronunciation_map(s.pronunciation_map_path)
+    return ToPronunciationResponse(text=pmap.apply(req.text, spell_unknown_acronyms=True))
 
 
 @router.get("/health")

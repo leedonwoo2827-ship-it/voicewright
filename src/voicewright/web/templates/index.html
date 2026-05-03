@@ -29,8 +29,8 @@
           <select id="voice"></select>
         </div>
         <div class="field">
-          <label for="speed">속도 <span id="speedValue">1.05</span></label>
-          <input id="speed" type="range" min="0.8" max="1.3" step="0.05" value="1.05">
+          <label for="speed">속도 <span id="speedValue">1.00</span></label>
+          <input id="speed" type="range" min="0.8" max="1.3" step="0.05" value="1.00">
         </div>
         <div class="field">
           <label for="totalStep">품질 (steps) <span id="stepValue">7</span></label>
@@ -66,8 +66,8 @@
             <select id="voiceOverride"><option value="">scene별 voice_style 사용</option></select>
           </div>
           <div class="field">
-            <label for="batchSpeed">속도 <span id="batchSpeedValue">1.05</span></label>
-            <input id="batchSpeed" type="range" min="0.8" max="1.3" step="0.05" value="1.05">
+            <label for="batchSpeed">속도 <span id="batchSpeedValue">1.00</span></label>
+            <input id="batchSpeed" type="range" min="0.8" max="1.3" step="0.05" value="1.00">
           </div>
           <div class="field">
             <label for="batchTotalStep">품질 (steps) <span id="batchStepValue">7</span></label>
@@ -93,7 +93,7 @@
       </aside>
 
       <div class="batch-right">
-        <p class="hint">scriptforge의 <code>ch{NN}_script.json</code>을 올리면 scene 목록이 카드로 표시됩니다. <strong>카드 안의 텍스트는 직접 편집해서 발음을 조정할 수 있고</strong>, 그 상태로 카드별 생성을 누르면 편집된 발음으로 합성됩니다. <strong>SRT 자막에는 항상 원본 텍스트가 들어갑니다.</strong></p>
+        <p class="hint">scriptforge의 <code>ch{NN}_script.json</code>을 올리면 scene 목록이 카드로 표시됩니다. 카드마다 <strong>발음 (TTS 입력)</strong>과 <strong>자막 (SRT 출력)</strong>이 분리돼 있어 각각 따로 편집할 수 있습니다. 발음 칸의 <em>한국어 발음 전환</em> 버튼을 누르면 영문 약자가 자동으로 한글 발음으로 바뀝니다(예: MOOC → 무크). 카드별 <em>생성</em>을 누르면 편집된 두 텍스트가 그대로 반영됩니다.</p>
         <div id="sceneList" class="scene-list"></div>
         <div id="batchError" class="error hidden"></div>
       </div>
