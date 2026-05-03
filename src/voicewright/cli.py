@@ -29,7 +29,7 @@ def synth(
     text: str = typer.Argument(..., help="합성할 한국어 텍스트"),
     voice: str = typer.Option("F2", "--voice", "-v", help=f"보이스 코드. {', '.join(ALL_VOICE_CODES)}"),
     out: Path = typer.Option(Path("synth.wav"), "--out", "-o", help="출력 wav 경로"),
-    speed: float = typer.Option(1.05, "--speed", help="발화 속도 (0.9~1.5)"),
+    speed: float = typer.Option(1.00, "--speed", help="발화 속도 (0.9~1.5)"),
     total_step: int = typer.Option(5, "--total-step", help="디노이징 스텝 (높을수록 품질↑/시간↑)"),
     lang: str = typer.Option("ko", "--lang", help="언어 코드"),
 ):

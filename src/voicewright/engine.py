@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,44 @@ from .pronunciation import PronunciationMap, load_pronunciation_map
 from .voices import voice_preset_path
 
 logger = logging.getLogger(__name__)
+
+
+# 한국어 긴 문장에서 Supertonic alignment가 흔들려 중간 단어를 통째로 누락하는
+# 증상이 보고됨 (예: 4문장·115자 한 덩어리 입력에서 "로부터", "지식의" 드롭).
+# 벤더된 helper의 chunk_text(max_len=120)는 너무 관대해서 한국어 음절 밀도엔
+# 부족하다. 우리 레이어에서 항상 문장 단위로 자르고, 한 문장이 길면 쉼표
+# 기준으로 추가 분할한 뒤 조각별로 따로 합성해 붙인다.
+_SENT_END_RE = re.compile(r"(?<=[.!?。！？…])\s+")
+_COMMA_RE = re.compile(r"(?<=[,，、])\s+")
+_TTS_MAX_CHARS = 60
+_INTER_PIECE_SILENCE_SEC = 0.18
+
+
+def _split_for_tts(text: str, max_chars: int = _TTS_MAX_CHARS) -> list[str]:
+    text = (text or "").strip()
+    if not text:
+        return []
+    out: list[str] = []
+    for sent in _SENT_END_RE.split(text):
+        sent = sent.strip()
+        if not sent:
+            continue
+        if len(sent) <= max_chars:
+            out.append(sent)
+            continue
+        parts = [p.strip() for p in _COMMA_RE.split(sent) if p.strip()]
+        cur = ""
+        for p in parts:
+            if not cur:
+                cur = p
+            elif len(cur) + 1 + len(p) <= max_chars:
+                cur = cur + " " + p
+            else:
+                out.append(cur)
+                cur = p
+        if cur:
+            out.append(cur)
+    return out
 
 
 def _select_providers(use_gpu: bool) -> list[str]:
@@ -126,9 +165,20 @@ class Engine:
         sp = speed if speed is not None else s.default_speed
         text = self._get_pmap().apply(text)
         style = self._style_for(voice_code)
+
+        pieces = _split_for_tts(text)
+        if not pieces:
+            return np.zeros(0, dtype=np.float32)
+
+        silence = np.zeros(int(self.sample_rate * _INTER_PIECE_SILENCE_SEC), dtype=np.float32)
+        parts: list[np.ndarray] = []
         async with self._infer_lock:
-            wav, dur = await asyncio.to_thread(self._tts, text, lang, style, ts, sp)
-        return self._trim_wav(wav, dur, 0)
+            for i, piece in enumerate(pieces):
+                wav, dur = await asyncio.to_thread(self._tts, piece, lang, style, ts, sp)
+                parts.append(self._trim_wav(wav, dur, 0))
+                if i < len(pieces) - 1:
+                    parts.append(silence)
+        return np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
 
     async def synth_batch_same_voice(
         self,
@@ -139,13 +189,17 @@ class Engine:
         total_step: int | None = None,
         speed: float | None = None,
     ) -> list[np.ndarray]:
-        s = settings_module.load()
-        ts = total_step if total_step is not None else s.default_total_step
-        sp = speed if speed is not None else s.default_speed
-        pmap = self._get_pmap()
-        text_list = [pmap.apply(t) for t in text_list]
-        style = self._styles_for([voice_code] * len(text_list))
-        lang_list = [lang] * len(text_list)
-        async with self._infer_lock:
-            wav, dur = await asyncio.to_thread(self._tts.batch, text_list, lang_list, style, ts, sp)
-        return [self._trim_wav(wav, dur, i) for i in range(len(text_list))]
+        # 각 scene을 chunked synth()로 처리해 alignment dropout을 막는다.
+        # 벤더 batch ONNX 호출은 텍스트별 alignment 이슈를 그대로 가지고 있어
+        # 정확성을 위해 직렬 호출로 전환했다.
+        out: list[np.ndarray] = []
+        for t in text_list:
+            wav = await self.synth(
+                t,
+                voice_code=voice_code,
+                lang=lang,
+                total_step=total_step,
+                speed=speed,
+            )
+            out.append(wav)
+        return out

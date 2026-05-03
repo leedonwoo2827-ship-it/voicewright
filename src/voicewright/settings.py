@@ -67,7 +67,7 @@ def load() -> Settings:
         pronunciation_map_path=_env_path("VOICEWRIGHT_PRONUNCIATION_MAP", root / "config" / "pronunciation_map.yaml"),
         workspace_root=_env_path("VOICEWRIGHT_WORKSPACE", root / "workspace"),
         use_gpu_mode=_env_str("VOICEWRIGHT_USE_GPU", "auto"),
-        default_speed=float(_env_str("VOICEWRIGHT_DEFAULT_SPEED", "1.05")),
+        default_speed=float(_env_str("VOICEWRIGHT_DEFAULT_SPEED", "1.00")),
         default_total_step=_env_int("VOICEWRIGHT_TOTAL_STEP", 7),
         batch_chunk_size=_env_int("VOICEWRIGHT_BATCH_CHUNK_SIZE", 4),
         host=_env_str("VOICEWRIGHT_HOST", "0.0.0.0"),

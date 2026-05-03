@@ -107,7 +107,7 @@ voicewright batch path\to\ch05_script.json
 
 옵션:
 ```
-voicewright batch ch05_script.json --output-root .\workspace --voice-override M3 --speed 1.05
+voicewright batch ch05_script.json --output-root .\workspace --voice-override M3 --speed 1.00
 ```
 
 ### 보이스 목록 + 매핑 확인
@@ -174,7 +174,7 @@ styles:
 | `VOICEWRIGHT_USE_GPU` | `auto` | `auto` / `1` / `0` |
 | `VOICEWRIGHT_WORKSPACE` | `./workspace` | 배치 출력 루트 |
 | `VOICEWRIGHT_VOICE_MAP` | `./config/voice_map.yaml` | 매핑 파일 |
-| `VOICEWRIGHT_DEFAULT_SPEED` | `1.05` | 발화 속도 |
+| `VOICEWRIGHT_DEFAULT_SPEED` | `1.00` | 발화 속도 |
 | `VOICEWRIGHT_TOTAL_STEP` | `5` | 디노이징 스텝 (높이면 품질↑/시간↑) |
 | `VOICEWRIGHT_BATCH_CHUNK_SIZE` | `4` | 배치 청크 크기 (GPU OOM이면 1-2로) |
 
