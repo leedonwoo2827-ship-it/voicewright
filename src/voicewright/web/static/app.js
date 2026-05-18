@@ -463,7 +463,7 @@
   // narration_text (TTS 입력) ≠ srt_text (자막 원문) — 발음 변환 결과를 자막에
   // 흘리지 않기 위해 분리해서 보낸다.
   function buildScriptFromCards() {
-    const cards = [...document.querySelectorAll('.scene-card')];
+    const cards = [...document.querySelectorAll('#sceneList .scene-card')];
     if (cards.length === 0 || !parsedChapter || !parsedScenes) return null;
     const byScene = new Map(parsedScenes.map(s => [s.scene, s]));
     const scenes = cards.map(card => {
@@ -485,7 +485,7 @@
 
   // 모든 카드에 /api/to_pronunciation을 적용해 발음 박스를 갱신.
   async function applyPronunciationToAllCards() {
-    const cards = [...document.querySelectorAll('.scene-card')];
+    const cards = [...document.querySelectorAll('#sceneList .scene-card')];
     await Promise.all(cards.map(async card => {
       const ta = card.querySelector('.scene-pron-edit');
       const original = ta.value;
@@ -625,7 +625,7 @@
   const runBatchPronBtn = document.getElementById('runBatchPron');
   runBatchPronBtn.addEventListener('click', async () => {
     if (!fileInput.files[0]) { showError('먼저 .json 파일을 올려주세요.'); return; }
-    const cards = document.querySelectorAll('.scene-card');
+    const cards = document.querySelectorAll('#sceneList .scene-card');
     if (cards.length === 0) { showError('scene 카드를 먼저 불러오세요.'); return; }
 
     runBatchPronBtn.disabled = true;
