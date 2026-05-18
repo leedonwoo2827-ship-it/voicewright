@@ -19,9 +19,60 @@ _LETTER_HANGUL = {
 }
 _ACRONYM_RE = re.compile(r"(?<![A-Za-z])[A-Z]{2,}(?![A-Za-z])")
 
+_DIGIT_HANGUL_SINO = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"]
+
+# 한자어 수사 + 단위 변환.
+#   - 연도(3~4자리 + "년")는 별도 처리 — "14년" 같은 기간 표기를 건드리지 않기 위해.
+#   - 그 외 단위는 1~4자리 + 단위 매칭.
+#   - 단위는 띄어쓰기 정책에 따라 두 그룹.
+#       TIGHT  : 숫자에 붙여 읽음 (예: "27분" → "이십칠분")
+#       SPACED : 한 칸 띄움      (예: "27킬로미터" → "이십칠 킬로미터")
+#   - 시(시간), 살, 명, 개, 마리 등 고유어 수사를 쓰는 단위, 6월/10월 같은
+#     특수 발음(유월/시월) 단위는 의도적으로 제외.
+_YEAR_RE = re.compile(r"(?<!\d)(\d{3,4})년")
+_SINO_TIGHT_UNITS = ["분", "초", "도", "원", "일"]
+_SINO_SPACED_UNITS = ["킬로미터", "센티미터", "밀리미터", "킬로그램", "퍼센트", "미터", "그램"]
+_SPACED_UNIT_SET = set(_SINO_SPACED_UNITS)
+# 긴 단위부터 매칭해야 "킬로미터"가 "미터"보다 먼저 잡힌다.
+_SINO_UNIT_RE = re.compile(
+    r"(?<!\d)(\d{1,4})("
+    + "|".join(sorted(_SINO_TIGHT_UNITS + _SINO_SPACED_UNITS, key=len, reverse=True))
+    + r")"
+)
+
 
 def _spell_acronym(word: str) -> str:
     return "".join(_LETTER_HANGUL.get(c, c) for c in word)
+
+
+def _sino_number(n: int) -> str:
+    """1~9999 정수를 한자어 수사로 변환 (천/백/십 앞 1은 생략)."""
+    if n == 0:
+        return "영"
+    digits = [int(c) for c in str(n)]
+    units = ["천", "백", "십", ""][4 - len(digits):]
+    parts: list[str] = []
+    for d, u in zip(digits, units):
+        if d == 0:
+            continue
+        if d == 1 and u in ("천", "백", "십"):
+            parts.append(u)
+        else:
+            parts.append(_DIGIT_HANGUL_SINO[d] + u)
+    return "".join(parts)
+
+
+def _convert_years(text: str) -> str:
+    return _YEAR_RE.sub(lambda m: _sino_number(int(m.group(1))) + "년", text)
+
+
+def _convert_sino_units(text: str) -> str:
+    def repl(m: "re.Match[str]") -> str:
+        n = int(m.group(1))
+        unit = m.group(2)
+        sep = " " if unit in _SPACED_UNIT_SET else ""
+        return f"{_sino_number(n)}{sep}{unit}"
+    return _SINO_UNIT_RE.sub(repl, text)
 
 
 @dataclass
@@ -50,7 +101,13 @@ class PronunciationMap:
             r"(?<![A-Za-z])(?:" + "|".join(escaped) + r")(?![A-Za-z])"
         )
 
-    def apply(self, text: str, *, spell_unknown_acronyms: bool = False) -> str:
+    def apply(
+        self,
+        text: str,
+        *,
+        spell_unknown_acronyms: bool = False,
+        convert_years: bool = False,
+    ) -> str:
         if not text:
             return text
         if self._pattern is not None:
@@ -58,6 +115,9 @@ class PronunciationMap:
         if spell_unknown_acronyms:
             # 사전에 없는 2글자 이상 영문 대문자 약어는 알파벳 단위로 음역
             text = _ACRONYM_RE.sub(lambda m: _spell_acronym(m.group(0)), text)
+        if convert_years:
+            text = _convert_years(text)
+            text = _convert_sino_units(text)
         return text
 
 

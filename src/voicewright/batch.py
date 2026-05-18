@@ -128,12 +128,13 @@ async def run_batch(
                 write_wav(out_path, wav, engine.sample_rate)
                 files.append(out_path.name)
 
-                # 개별 scene SRT (단일 블록)
+                # 개별 scene SRT (단일 블록) — 자막엔 원문(srt_text)을 우선 사용
                 actual_dur = float(len(wav)) / float(engine.sample_rate)
                 actual_durations[scene_num] = actual_dur
                 scene_obj = scene_lookup[scene_num]
                 dur_for_srt = scene_obj.narration_seconds or actual_dur
-                srt_text = make_single_srt(scene_obj.narration_text, dur_for_srt)
+                srt_body = scene_obj.srt_text or scene_obj.narration_text
+                srt_text = make_single_srt(srt_body, dur_for_srt)
                 srt_p = srt_path(out_root, chapter_id, scene_num)
                 srt_p.write_text(srt_text, encoding="utf-8")
 
@@ -148,7 +149,7 @@ async def run_batch(
     entries = [
         SrtEntry(
             scene=sc.scene,
-            text=sc.narration_text,
+            text=sc.srt_text or sc.narration_text,
             duration=sc.narration_seconds or actual_durations.get(sc.scene, 0.0),
         )
         for sc in sorted_scenes
