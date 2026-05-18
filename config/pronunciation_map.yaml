@@ -11,60 +11,49 @@
 #   - 새 항목 추가 후엔 즉시 반영 (서버 재시작 불필요)
 
 rules:
-  # 학습 / 교육
-  MOOC: 무크
-  LMS: 엘엠에스
-  GPA: 지피에이
-  TOEIC: 토익
-  TOEFL: 토플
-  IELTS: 아이엘츠
-
-  # 방송 / 미디어
-  BBC: 비비씨
-  KBS: 케이비에스
-  MBC: 엠비씨
-  SBS: 에스비에스
-  EBS: 이비에스
-  YTN: 와이티엔
-  CNN: 씨엔엔
-  NHK: 엔에이치케이
-
-  # IT / 인터넷
+  ADSL: 에이디에스엘
   AI: 에이아이
-  GPU: 지피유
-  CPU: 씨피유
-  URL: 유알엘
-  JSON: 제이슨
+  ALEKS: 알렉스
   API: 에이피아이
+  AR: 에이알
+  BBC: 비비씨
+  BGM: 비지엠
+  CCTV: 씨씨티브이
+  CERN: 세른
+  CNN: 씨엔엔
+  CPU: 씨피유
+  EBS: 이비에스
+  GPA: 지피에이
+  GPS: 지피에스
+  GPU: 지피유
   HTTP: 에이치티티피
   HTTPS: 에이치티티피에스
-  SDK: 에스디케이
-  IDE: 아이디이
-  USB: 유에스비
-  PDF: 피디에프
-  XML: 엑스엠엘
-
-  # 기관 / 조직
-  CERN: 세른
-  NASA: 나사
-  MIT: 엠아이티
-  ICS: 아이씨에스
-  WHA: 더블유에이치에이
   IBM: 아이비엠
-  OECD: 오이씨디
-  WHO: 더블유에이치오
-
-  # 기술 / 포맷
-  ADSL: 에이디에스엘
-  BGM: 비지엠
-  OST: 오에스티
-  MV: 엠브이
+  ICS: 아이씨에스
+  IDE: 아이디이
+  IELTS: 아이엘츠
+  JSON: 제이슨
+  KBS: 케이비에스
+  LMS: 엘엠에스
+  MBC: 엠비씨
   MC: 엠씨
+  MIT: 엠아이티
+  MOOC: 무크
+  MV: 엠브이
+  NASA: 나사
+  NHK: 엔에이치케이
+  OECD: 오이씨디
+  OST: 오에스티
+  PDF: 피디에프
   RSS: 알에스에스
-  CCTV: 씨씨티브이
-  GPS: 지피에스
+  SBS: 에스비에스
+  SDK: 에스디케이
+  TOEFL: 토플
+  TOEIC: 토익
+  URL: 유알엘
+  USB: 유에스비
   VR: 브이알
-  AR: 에이알
-
-  # 한글로 자주 쓰이는 외래어 (선택사항 — 발음이 어색하면 등록)
-  # 예: ChatGPT → 챗지피티
+  WHA: 더블유에이치에이
+  WHO: 더블유에이치오
+  XML: 엑스엠엘
+  YTN: 와이티엔
