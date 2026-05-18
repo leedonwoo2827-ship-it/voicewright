@@ -82,6 +82,8 @@
         const newVal = valEdit.value.trim();
         if (!newVal || newVal === original) return;
         saveBtn.disabled = true;
+        const oldText = saveBtn.textContent;
+        saveBtn.textContent = '저장 중…';
         try {
           await upsertRule(key, newVal);
           row.classList.add('row-saved');
@@ -90,15 +92,23 @@
           row.classList.add('row-error');
           setTimeout(() => row.classList.remove('row-error'), 1500);
           showError(`저장 실패: ${err.message}`);
+          saveBtn.disabled = false;
+          saveBtn.textContent = oldText;
         }
+        // 성공 시에는 renderTable이 행을 새로 그려서 별도 복구 불필요
       });
 
       delBtn.addEventListener('click', async () => {
         if (!confirm(`"${key}" 항목을 삭제할까요?`)) return;
+        delBtn.disabled = true;
+        const oldText = delBtn.textContent;
+        delBtn.textContent = '삭제 중…';
         try {
           await deleteRule(key);
         } catch (err) {
           showError(`삭제 실패: ${err.message}`);
+          delBtn.disabled = false;
+          delBtn.textContent = oldText;
         }
       });
     });
@@ -144,18 +154,29 @@
     renderTable();
   }
 
+  const addBtn = addForm.querySelector('button[type="submit"]');
   addForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const k = newKey.value.trim();
     const v = newValue.value.trim();
     if (!k || !v) return;
+    addBtn.disabled = true;
+    newKey.disabled = true;
+    newValue.disabled = true;
+    const oldLabel = addBtn.textContent;
+    addBtn.textContent = '추가 중…';
     try {
       await upsertRule(k, v);
       newKey.value = '';
       newValue.value = '';
-      newKey.focus();
     } catch (err) {
       showError(`추가 실패: ${err.message}`);
+    } finally {
+      addBtn.disabled = false;
+      newKey.disabled = false;
+      newValue.disabled = false;
+      addBtn.textContent = oldLabel;
+      newKey.focus();
     }
   });
 
