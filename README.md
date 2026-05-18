@@ -13,11 +13,14 @@
 ```
 git clone https://github.com/leedonwoo2827-ship-it/voicewright.git
 ```
+→ 받은 위치에 **`voicewright`** 폴더가 생깁니다.
 
-### ② 폴더 안에서 cmd 열기
+### ② voicewright 폴더 **안에서** cmd 열기
 
-`voicewright` 폴더 안으로 들어가서 **윈도우 탐색기 주소창에 `cmd` 입력 → Enter**.
+탐색기로 `voicewright` 폴더 안까지 들어간 뒤(주소창에 `\voicewright`가 보여야 함) **주소창에 `cmd` 입력 → Enter**.
 (또는 폴더 빈 곳에서 Shift + 우클릭 → "터미널에서 열기".)
+
+> ⚠️ 한 단계 위 폴더에서 열면 `install.bat / start.bat`을 못 찾습니다 (`파일 .bat을(를) 찾을 수 없습니다` 에러). 프롬프트가 `...\voicewright>` 로 끝나는지 확인하세요.
 
 <!-- 이미지: 탐색기 주소창에 cmd 입력하는 모습 -->
 ![탐색기 주소창에서 cmd](docs/img/install-step-cmd.png)
@@ -40,11 +43,18 @@ install.bat
 
 ## 2. 실행
 
-폴더에서 `start.bat` 더블클릭. 또는 cmd에서:
+설치 때와 **같은 위치(`voicewright` 폴더 안)** 에서 실행해야 합니다.
+
+cmd에서:
 
 ```
+cd D:\경로\voicewright
 start.bat
 ```
+
+또는 탐색기로 `voicewright` 폴더 들어가서 `start.bat` 더블클릭.
+
+> 프롬프트가 `D:\...\voicewright>` 로 끝나는 상태여야 합니다. 한 단계 위에서 치면 `파일 .bat을(를) 찾을 수 없습니다` 에러가 납니다.
 
 브라우저로 `http://localhost:7878` 접속.
 
