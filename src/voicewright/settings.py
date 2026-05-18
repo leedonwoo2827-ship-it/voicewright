@@ -56,7 +56,7 @@ class Settings:
 def load() -> Settings:
     root = _project_root()
     assets = _env_path("VOICEWRIGHT_ASSETS_DIR", root / "assets")
-    # supertonic-2 레이아웃: assets/onnx/*.onnx + tts.json + unicode_indexer.json,
+    # supertonic-3 레이아웃: assets/onnx/*.onnx + tts.json + unicode_indexer.json,
     # assets/voice_styles/*.json
     onnx_dir = assets / "onnx" if (assets / "onnx").exists() else assets
     return Settings(

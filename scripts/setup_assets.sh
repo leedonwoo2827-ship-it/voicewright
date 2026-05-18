@@ -2,7 +2,7 @@
 set -euo pipefail
 
 FORCE=0
-REPO="https://huggingface.co/Supertone/supertonic-2"
+REPO="https://huggingface.co/Supertone/supertonic-3"
 
 while [ $# -gt 0 ]; do
   case "$1" in

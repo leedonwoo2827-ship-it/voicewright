@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [switch]$Force,
-  [string]$Repo = "https://huggingface.co/Supertone/supertonic-2"
+  [string]$Repo = "https://huggingface.co/Supertone/supertonic-3"
 )
 
 $ErrorActionPreference = "Stop"

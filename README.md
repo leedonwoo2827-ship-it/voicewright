@@ -1,6 +1,6 @@
 # voicewright
 
-> 로컬 한국어 TTS. **Supertone Supertonic** 기반.
+> 로컬 한국어 TTS. **Supertone Supertonic 3** 기반.
 > 파이프라인: storylens → scriptforge → flowgenie + **voicewright** → sceneweaver-capcut
 
 scriptforge가 만든 `ch{NN}_script.json`을 받아 모든 scene의 한국어 내레이션을 합성하고, sceneweaver-capcut가 기대하는 `workspace/ch{NN}/audio/ch{NN}_{SS}_narration.wav` 형태로 저장합니다.

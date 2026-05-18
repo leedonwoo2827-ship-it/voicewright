@@ -64,7 +64,7 @@ if exist "assets\onnx\vocoder.onnx" (
     echo [ERROR] git-lfs is required. Install from https://git-lfs.com
     pause & exit /b 1
   )
-  git clone https://huggingface.co/Supertone/supertonic-2 assets
+  git clone https://huggingface.co/Supertone/supertonic-3 assets
   if errorlevel 1 (
     echo [ERROR] Model download failed.
     pause & exit /b 1

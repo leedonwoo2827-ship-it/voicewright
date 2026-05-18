@@ -1,6 +1,6 @@
 [project]
 name = "voicewright"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local Korean TTS service for the storylens/scriptforge/sceneweaver pipeline"
 requires-python = ">=3.11,<3.14"
 authors = [{ name = "leedonwoo2827-ship-it" }]

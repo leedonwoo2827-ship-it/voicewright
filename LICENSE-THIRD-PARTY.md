@@ -34,8 +34,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## Supertonic-2 model assets
+## Supertonic-3 model assets
 
 Downloaded separately by `scripts/setup_assets.{ps1,sh}` from
-https://huggingface.co/Supertone/supertonic-2 and licensed under
+https://huggingface.co/Supertone/supertonic-3 and licensed under
 **OpenRAIL-M**. See the model card for usage restrictions.
