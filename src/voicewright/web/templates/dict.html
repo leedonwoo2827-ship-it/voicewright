@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>voicewright — 발음 사전</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/dict.css">
+</head>
+<body>
+  <header>
+    <h1>발음 사전 관리</h1>
+    <p class="subtitle">합성 직전 영문 약자·외래어를 한국어 발음으로 자동 치환 · 저장 즉시 반영 (서버 재시작 불필요)</p>
+    <nav class="pagenav">
+      <a href="/">← 합성 화면으로</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="dict-section">
+      <h2>미리보기</h2>
+      <p class="hint">텍스트를 입력하면 현재 사전 + 영문 약자 자동 음역 + 숫자/단위 변환 결과를 보여줍니다. 자막(SRT)에는 적용되지 않습니다.</p>
+      <textarea id="previewInput" rows="3" placeholder="예: AI는 1989년부터 27킬로미터 떨어진 MOOC 강의에서…"></textarea>
+      <div class="preview-row">
+        <button id="previewBtn" class="primary">변환 결과 보기</button>
+      </div>
+      <div id="previewOutput" class="preview-output hidden"></div>
+    </section>
+
+    <section class="dict-section">
+      <h2>사전 항목 <span id="dictCount" class="count-badge">0</span></h2>
+      <p class="hint">단어 경계(라틴 알파벳 양쪽)로 매칭됩니다. 예: <code>MOOC</code>는 잡지만 <code>MOOCAR</code>은 안 잡힘.</p>
+
+      <form id="addForm" class="add-row">
+        <input id="newKey" type="text" placeholder="약어 (예: ChatGPT)" maxlength="64" required autocomplete="off">
+        <input id="newValue" type="text" placeholder="한국어 발음 (예: 챗지피티)" maxlength="128" required autocomplete="off">
+        <button type="submit" class="primary">추가</button>
+      </form>
+
+      <div class="search-row">
+        <input id="searchInput" type="text" placeholder="검색…" autocomplete="off">
+      </div>
+
+      <table class="dict-table" id="dictTable">
+        <thead>
+          <tr>
+            <th>약어</th>
+            <th>발음</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="dictBody">
+          <tr><td colspan="3" class="empty">불러오는 중…</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div id="errorBox" class="error hidden"></div>
+  </main>
+
+  <footer>
+    <p><a href="/">합성 화면으로 돌아가기</a></p>
+  </footer>
+
+  <script src="/static/dict.js"></script>
+</body>
+</html>

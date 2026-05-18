@@ -15,3 +15,8 @@ router = APIRouter()
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
+
+
+@router.get("/dict", response_class=HTMLResponse)
+async def dict_page(request: Request):
+    return templates.TemplateResponse(request, "dict.html")

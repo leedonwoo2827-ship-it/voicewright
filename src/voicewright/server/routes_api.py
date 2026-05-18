@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import soundfile as sf
+import yaml
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Response, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse
 
@@ -22,6 +25,7 @@ from ..paths import (
     chapter_srt_path,
     chapter_subtitles_dir,
     narration_path,
+    normalize_chapter_id,
     resolve_chapter_id,
     srt_path,
 )
@@ -32,7 +36,7 @@ from ..schemas import (
     VoiceInfoOut,
     VoiceListResponse,
 )
-from ..srt import make_single_srt
+from ..srt import SrtEntry, make_chapter_srt, make_single_srt
 from ..voices import ALL_VOICE_CODES, load_voice_map
 from .jobs import JobRecord, get_registry
 
@@ -252,6 +256,7 @@ async def parse_script_endpoint(
         scenes_out.append({
             "scene": sc.scene,
             "narration_text": sc.narration_text,
+            "srt_text": sc.srt_text,
             "narration_seconds": sc.narration_seconds,
             "voice_style": sc.voice_style,
             "voice_resolved": code,
@@ -341,6 +346,67 @@ async def serve_chapter_srt(chapter_id: str) -> FileResponse:
     return FileResponse(str(p), media_type="text/plain; charset=utf-8", filename=f"ch{chapter_id}.srt")
 
 
+_PER_SCENE_SRT_RE = re.compile(r"^ch[^_]+_(\d+)_narration\.srt$")
+
+
+def _wav_duration(path: Path) -> float:
+    info = sf.info(str(path))
+    return info.frames / float(info.samplerate)
+
+
+def _read_single_srt_body(path: Path) -> str:
+    """단일 블록 SRT (`make_single_srt` 출력 형식)에서 자막 본문만 추출."""
+    lines = path.read_text(encoding="utf-8").strip().split("\n")
+    if len(lines) < 3:
+        return ""
+    return "\n".join(lines[2:]).strip()
+
+
+@router.post("/regenerate_chapter_srt")
+async def regenerate_chapter_srt(chapter: str = Form(...)) -> dict:
+    """workspace의 per-scene SRT + WAV을 다시 모아 챕터 통합 SRT를 새로 만든다.
+
+    카드별 재생성으로 일부 scene이 갱신된 뒤, 챕터 자막의 타임코드를 현재
+    오디오와 동기화하기 위함.
+    """
+    chap = normalize_chapter_id(chapter)
+    if chap is None:
+        raise HTTPException(status_code=422, detail=f"invalid chapter: {chapter}")
+
+    s = settings_module.load()
+    sub_dir = chapter_subtitles_dir(s.workspace_root, chap)
+    if not sub_dir.exists():
+        raise HTTPException(status_code=404, detail=f"no subtitles dir for ch{chap}")
+
+    entries: list[SrtEntry] = []
+    for srt_p in sorted(sub_dir.glob("*_narration.srt")):
+        m = _PER_SCENE_SRT_RE.match(srt_p.name)
+        if not m:
+            continue
+        scene_num = int(m.group(1))
+        wav_p = narration_path(s.workspace_root, chap, scene_num)
+        if not wav_p.exists():
+            # SRT만 있고 WAV가 없으면 스킵 (오디오 없는 scene은 챕터 SRT에 포함 못함)
+            continue
+        body = _read_single_srt_body(srt_p)
+        dur = _wav_duration(wav_p)
+        entries.append(SrtEntry(scene=scene_num, text=body, duration=dur))
+
+    if not entries:
+        raise HTTPException(status_code=404, detail="no per-scene SRT/WAV pairs found")
+
+    entries.sort(key=lambda e: e.scene)
+    chapter_text = make_chapter_srt(entries)
+    cp = chapter_srt_path(s.workspace_root, chap)
+    cp.parent.mkdir(parents=True, exist_ok=True)
+    cp.write_text(chapter_text, encoding="utf-8")
+    return {
+        "chapter": chap,
+        "scene_count": len(entries),
+        "url": f"/api/files/ch{chap}/subtitles_full",
+    }
+
+
 class ToPronunciationRequest(BaseModel):
     text: str = Field(..., max_length=5000)
 
@@ -351,12 +417,138 @@ class ToPronunciationResponse(BaseModel):
 
 @router.post("/to_pronunciation", response_model=ToPronunciationResponse)
 async def to_pronunciation(req: ToPronunciationRequest) -> ToPronunciationResponse:
-    """발음 사전 + 미등록 영문 대문자 약어 음역을 적용해 반환."""
+    """발음 사전 + 영문 대문자 약어 음역 + 연도(예: 1989년 → 천구백팔십구년) +
+    숫자+단위(킬로미터/미터/분/초/도/원/퍼센트 등)를 한자어 수사로 변환."""
     if not req.text.strip():
         return ToPronunciationResponse(text="")
     s = settings_module.load()
     pmap = load_pronunciation_map(s.pronunciation_map_path)
-    return ToPronunciationResponse(text=pmap.apply(req.text, spell_unknown_acronyms=True))
+    return ToPronunciationResponse(
+        text=pmap.apply(req.text, spell_unknown_acronyms=True, convert_years=True)
+    )
+
+
+# ---------- 발음 사전 편집 (웹 UI) ----------
+
+_DICT_DEFAULT_HEADER = """# voicewright 발음 사전
+#
+# 합성 직전에 텍스트의 약자·외래어를 한국어 발음으로 자동 치환합니다.
+# Supertonic은 영문 약자를 음절 단위로 읽는 경향이 있어 (예: MOOC → "엠오오씨"),
+# 자연스러운 발음을 원하면 여기에 등록해두세요.
+#
+# 동작 규칙
+#   - 단어 경계(\\b) 매칭 — "MOOC"는 잡지만 "MOOCAR" 같은 합성어 일부는 안 잡힘
+#   - SRT 자막에는 적용되지 않음 (자막에는 항상 원본 텍스트가 들어감)
+#   - 사용자가 카드에서 직접 텍스트를 편집한 경우엔 편집 결과가 우선 (이중 변환은 자연스럽게 누적)
+#   - 새 항목 추가 후엔 즉시 반영 (서버 재시작 불필요)
+"""
+
+
+def _yaml_quote(s: str) -> str:
+    """필요할 때만 따옴표로 감싼다 (콜론·해시·앞공백·특수문자 포함 시)."""
+    if not s:
+        return '""'
+    if any(c in s for c in (":", "#", "'", '"', "\n", "\t")) or s != s.strip():
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return s
+
+
+def _read_dict_file(path: Path) -> tuple[str, dict[str, str]]:
+    """YAML 파일에서 (헤더 주석, rules dict)를 분리해 읽는다.
+    파일이 없거나 헤더가 없으면 기본 헤더를 쓴다."""
+    if not path.exists():
+        return _DICT_DEFAULT_HEADER, {}
+
+    raw = path.read_text(encoding="utf-8")
+    # "rules:" 첫 등장 라인을 기준으로 분할
+    lines = raw.splitlines(keepends=True)
+    rules_idx = next(
+        (i for i, ln in enumerate(lines) if ln.lstrip().startswith("rules:")),
+        None,
+    )
+    if rules_idx is None:
+        header = _DICT_DEFAULT_HEADER
+    else:
+        header = "".join(lines[:rules_idx]).rstrip() + "\n"
+        if not header.strip():
+            header = _DICT_DEFAULT_HEADER
+
+    try:
+        data = yaml.safe_load(raw) or {}
+        raw_rules = data.get("rules") or {}
+    except Exception:
+        raw_rules = {}
+
+    rules: dict[str, str] = {}
+    for k, v in raw_rules.items():
+        key = str(k).strip()
+        val = str(v).strip()
+        if key and val:
+            rules[key] = val
+    return header, rules
+
+
+def _write_dict_file(path: Path, header: str, rules: dict[str, str]) -> None:
+    """카테고리 그룹 없이 키 정렬 순서로 dump (사용자가 UI에서 편집하므로 단순화)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    parts: list[str] = [header.rstrip("\n") + "\n\n", "rules:\n"]
+    for k in sorted(rules.keys()):
+        parts.append(f"  {_yaml_quote(k)}: {_yaml_quote(rules[k])}\n")
+    path.write_text("".join(parts), encoding="utf-8")
+
+
+class DictRule(BaseModel):
+    key: str = Field(..., min_length=1, max_length=64)
+    value: str = Field(..., min_length=1, max_length=128)
+
+
+class DictResponse(BaseModel):
+    rules: dict[str, str]
+    count: int
+
+
+@router.get("/dict", response_model=DictResponse)
+async def dict_get() -> DictResponse:
+    s = settings_module.load()
+    _, rules = _read_dict_file(s.pronunciation_map_path)
+    return DictResponse(rules=rules, count=len(rules))
+
+
+@router.post("/dict", response_model=DictResponse)
+async def dict_upsert(rule: DictRule) -> DictResponse:
+    s = settings_module.load()
+    header, rules = _read_dict_file(s.pronunciation_map_path)
+    key = rule.key.strip()
+    val = rule.value.strip()
+    if not key or not val:
+        raise HTTPException(status_code=400, detail="key/value must be non-empty")
+    rules[key] = val
+    _write_dict_file(s.pronunciation_map_path, header, rules)
+    return DictResponse(rules=rules, count=len(rules))
+
+
+@router.delete("/dict/{key}", response_model=DictResponse)
+async def dict_delete(key: str) -> DictResponse:
+    s = settings_module.load()
+    header, rules = _read_dict_file(s.pronunciation_map_path)
+    key = key.strip()
+    if key not in rules:
+        raise HTTPException(status_code=404, detail=f"key '{key}' not found")
+    del rules[key]
+    _write_dict_file(s.pronunciation_map_path, header, rules)
+    return DictResponse(rules=rules, count=len(rules))
+
+
+@router.post("/dict/preview", response_model=ToPronunciationResponse)
+async def dict_preview(req: ToPronunciationRequest) -> ToPronunciationResponse:
+    """사전 편집 화면용 — /to_pronunciation과 동일한 변환 미리보기."""
+    if not req.text.strip():
+        return ToPronunciationResponse(text="")
+    s = settings_module.load()
+    pmap = load_pronunciation_map(s.pronunciation_map_path)
+    return ToPronunciationResponse(
+        text=pmap.apply(req.text, spell_unknown_acronyms=True, convert_years=True)
+    )
 
 
 @router.get("/health")
