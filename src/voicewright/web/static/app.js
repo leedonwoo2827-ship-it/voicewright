@@ -144,6 +144,62 @@
     return `1\n00:00:00,000 --> ${formatSrtTime(dur)}\n${text || ''}\n`;
   }
 
+  // ---- 자막 큐(cue) 타이밍 헬퍼 ----
+  // 표시 포맷은 mm:ss.s (예: 00:04.2). 편집 input도 같은 포맷을 파싱한다.
+  function formatClock(sec) {
+    const total = Math.max(0, sec || 0);
+    const m = Math.floor(total / 60);
+    const s = total - m * 60;
+    return `${String(m).padStart(2, '0')}:${s.toFixed(1).padStart(4, '0')}`;
+  }
+  // "mm:ss.s" / "ss.s" / "hh:mm:ss" 모두 허용 → 초(float). 파싱 실패 시 null.
+  function parseClock(str) {
+    const s = (str || '').trim();
+    if (!s) return null;
+    const parts = s.split(':').map(p => p.trim());
+    if (parts.some(p => p === '' || isNaN(Number(p)))) return null;
+    let sec = 0;
+    for (const p of parts) sec = sec * 60 + Number(p);
+    return sec >= 0 ? sec : null;
+  }
+  // 글자 수 비례로 total을 분배해 연속 큐 생성 (backend auto_time_cues와 동일 규칙)
+  function autoTimeCues(texts, total) {
+    const clean = texts.map(t => (t || '').trim());
+    const dur = Math.max(total || 0, 0.1);
+    const weights = clean.map(t => Math.max(t.length, 1));
+    const sum = weights.reduce((a, b) => a + b, 0);
+    const out = [];
+    let cursor = 0;
+    clean.forEach((t, i) => {
+      const end = (i === clean.length - 1) ? dur : cursor + dur * (weights[i] / sum);
+      out.push({ text: t, start: Math.round(cursor * 1000) / 1000, end: Math.round(end * 1000) / 1000 });
+      cursor = end;
+    });
+    return out;
+  }
+  function srtTimeToSec(str) {
+    const m = (str || '').trim().replace('.', ',').match(/^(\d{1,2}):(\d{2}):(\d{2})(?:,(\d{1,3}))?$/);
+    if (!m) return 0;
+    const ms = (m[4] || '0').padEnd(3, '0').slice(0, 3);
+    return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + (+ms) / 1000;
+  }
+  // SRT 문자열 → [{text,start,end}] (전체 일괄 후 .srt 재로딩용)
+  function parseSrtCues(srt) {
+    const cues = [];
+    (srt || '').trim().split(/\n\s*\n/).forEach(block => {
+      const lines = block.split('\n');
+      let tm = null; const body = [];
+      lines.forEach(ln => {
+        const m = ln.match(/(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})/);
+        if (m && !tm) { tm = [srtTimeToSec(m[1]), srtTimeToSec(m[2])]; }
+        else if (tm) { body.push(ln); }
+      });
+      const text = body.join('\n').trim();
+      if (tm && text) cues.push({ text, start: tm[0], end: tm[1] });
+    });
+    return cues;
+  }
+
   document.getElementById('generate').addEventListener('click', async () => {
     const pronText = pronTa.value.trim();
     // 자막은 사용자가 따로 손댔으면 그 값, 아니면 발음 변환 전 원본 (없으면 발음 텍스트 폴백)
@@ -231,6 +287,142 @@
     batchErr.classList.remove('hidden');
   }
   function clearError() { batchErr.classList.add('hidden'); }
+
+  // ---- 자막 큐 편집기 (카드별) ----
+  // card._cues = [{text,start,end}] 가 단일 소스. 미리보기/행/SRT 모두 여기서 파생.
+
+  function audioDurationOf(card) {
+    const a = card.querySelector('audio');
+    return (a && Number.isFinite(a.duration) && a.duration > 0) ? a.duration : null;
+  }
+
+  // 큐 행 DOM을 다시 그리고 이벤트를 연결한다.
+  function renderCueRows(card) {
+    const wrap = card.querySelector('.cue-rows');
+    wrap.innerHTML = '';
+    (card._cues || []).forEach((cue, i) => {
+      const row = document.createElement('div');
+      row.className = 'cue-row';
+      row.dataset.i = i;
+      row.innerHTML = `
+        <span class="cue-time">
+          <input class="cue-start" type="text" inputmode="decimal" value="${formatClock(cue.start)}">
+          <span class="cue-tilde">~</span>
+          <input class="cue-end" type="text" inputmode="decimal" value="${formatClock(cue.end)}">
+        </span>
+        <input class="cue-text" type="text" value="${escapeHtml(cue.text)}">
+        <button type="button" class="cue-add" title="아래에 줄 추가">+</button>
+        <button type="button" class="cue-del" title="이 줄 삭제">×</button>
+      `;
+      const startEl = row.querySelector('.cue-start');
+      const endEl = row.querySelector('.cue-end');
+      const textEl = row.querySelector('.cue-text');
+
+      startEl.addEventListener('change', () => {
+        const v = parseClock(startEl.value);
+        if (v === null) { startEl.value = formatClock(cue.start); return; }
+        cue.start = v; startEl.value = formatClock(v);
+      });
+      endEl.addEventListener('change', () => {
+        const v = parseClock(endEl.value);
+        if (v === null) { endEl.value = formatClock(cue.end); return; }
+        cue.end = v; endEl.value = formatClock(v);
+      });
+      textEl.addEventListener('input', () => { cue.text = textEl.value; });
+
+      // 시간 칸 클릭 시 해당 큐 시작으로 시킹 (들으며 조정 보조)
+      row.querySelector('.cue-time').addEventListener('click', (e) => {
+        if (e.target.tagName === 'INPUT') return;
+        const a = card.querySelector('audio');
+        if (a) { a.currentTime = cue.start; a.play().catch(() => {}); }
+      });
+
+      row.querySelector('.cue-add').addEventListener('click', () => {
+        card._cues.splice(i + 1, 0, { text: '', start: cue.end, end: cue.end });
+        redistributeCues(card);
+        renderCueRows(card);
+      });
+      row.querySelector('.cue-del').addEventListener('click', () => {
+        if (card._cues.length <= 1) return;
+        card._cues.splice(i, 1);
+        redistributeCues(card);
+        renderCueRows(card);
+      });
+      wrap.appendChild(row);
+    });
+  }
+
+  // 현재 줄 텍스트 기준으로 시간을 글자수 비례 재분배 (오디오 길이 기준)
+  function redistributeCues(card) {
+    const dur = audioDurationOf(card) || (card._cues.length ? card._cues[card._cues.length - 1].end : 1);
+    const timed = autoTimeCues(card._cues.map(c => c.text), dur);
+    card._cues.forEach((c, i) => { if (timed[i]) { c.start = timed[i].start; c.end = timed[i].end; } });
+  }
+
+  function showCueEditor(card, cues) {
+    card._cues = (cues || []).map(c => ({ text: c.text || '', start: +c.start || 0, end: +c.end || 0 }));
+    renderCueRows(card);
+    card.querySelector('.cue-editor').classList.remove('hidden');
+    card.querySelector('.cue-preview').classList.remove('hidden');
+    updateCuePreview(card, 0);
+  }
+
+  // 재생 위치(sec)에 맞춰 미리보기 텍스트/진행바/활성 행을 갱신
+  function updateCuePreview(card, sec) {
+    const cues = card._cues || [];
+    const previewText = card.querySelector('.cue-preview-text');
+    const fill = card.querySelector('.cue-progress-fill');
+    const a = card.querySelector('audio');
+    const dur = (a && Number.isFinite(a.duration) && a.duration > 0) ? a.duration : (cues.length ? cues[cues.length - 1].end : 0);
+    let active = -1;
+    for (let i = 0; i < cues.length; i++) {
+      if (sec >= cues[i].start && sec < cues[i].end) { active = i; break; }
+    }
+    if (active === -1 && cues.length && sec >= (cues[cues.length - 1].end)) active = cues.length - 1;
+    previewText.textContent = active >= 0 ? cues[active].text : '';
+    if (fill) fill.style.width = dur > 0 ? `${Math.min(100, 100 * sec / dur)}%` : '0%';
+    card.querySelectorAll('.cue-row').forEach((row, i) => row.classList.toggle('cue-active', i === active));
+  }
+
+  // 카드 오디오에 재생 동기화 바인딩 (카드 생성 시 1회)
+  function setupCueSync(card) {
+    const a = card.querySelector('audio');
+    if (!a || a._cueSyncBound) return;
+    a._cueSyncBound = true;
+    a.addEventListener('timeupdate', () => updateCuePreview(card, a.currentTime));
+    a.addEventListener('seeked', () => updateCuePreview(card, a.currentTime));
+  }
+
+  async function saveCues(card, chapter, sceneNum) {
+    const btn = card.querySelector('.cue-save');
+    if (!card._cues || !card._cues.length) return;
+    // 시간 순 정렬·검증은 서버가 함. 보내기 전 start/end 정렬만 가볍게 보정.
+    const payload = card._cues.map(c => ({ text: c.text, start: c.start, end: Math.max(c.end, c.start + 0.001) }));
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = '저장 중…';
+    try {
+      const fd = new FormData();
+      fd.append('chapter', chapter);
+      fd.append('scene', sceneNum);
+      fd.append('cues', JSON.stringify(payload));
+      const res = await fetch('/api/save_scene_srt', { method: 'POST', body: fd });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try { detail = (await res.json()).detail || detail; } catch {}
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      const dlSrt = card.querySelector('.dl-srt');
+      if (dlSrt) { dlSrt.href = data.srt_url + '?t=' + Date.now(); }
+      btn.textContent = '저장됨 ✓';
+      setTimeout(() => { btn.textContent = old; }, 1500);
+    } catch (e) {
+      alert(`자막 저장 실패: ${e.message}`);
+      btn.textContent = old;
+    } finally {
+      btn.disabled = false;
+    }
+  }
 
   // ---- 파일 입력 핸들링 → 즉시 parse_script ----
   dropzone.addEventListener('click', () => fileInput.click());
@@ -321,6 +513,20 @@
         <button type="button" class="generate-scene">▶ 생성</button>
         <audio class="hidden" controls preload="none"></audio>
       </div>
+      <div class="cue-preview hidden">
+        <div class="cue-preview-text"></div>
+        <div class="cue-progress"><div class="cue-progress-fill"></div></div>
+      </div>
+      <div class="cue-editor hidden">
+        <div class="cue-editor-head">
+          <span class="cue-editor-title">자막 타이밍 <small>(들으면서 시간을 조정하세요)</small></span>
+          <div class="cue-editor-actions">
+            <button type="button" class="cue-autofill" title="현재 줄 텍스트 기준으로 시간을 글자수 비례로 다시 채웁니다">시간 자동 채우기</button>
+            <button type="button" class="cue-save" title="조정한 타임코드를 .srt로 저장">자막 저장</button>
+          </div>
+        </div>
+        <div class="cue-rows"></div>
+      </div>
       <div class="scene-downloads hidden">
         <a class="dl-wav download" download>⬇ wav</a>
         <a class="dl-srt download" download>⬇ srt</a>
@@ -389,6 +595,9 @@
     });
 
     card.querySelector('.generate-scene').addEventListener('click', () => generateScene(card, sc, chapter));
+    card.querySelector('.cue-autofill').addEventListener('click', () => { redistributeCues(card); renderCueRows(card); });
+    card.querySelector('.cue-save').addEventListener('click', () => saveCues(card, chapter, sc.scene));
+    setupCueSync(card);
     return card;
   }
 
@@ -442,6 +651,9 @@
       const dlSrt = card.querySelector('.dl-srt');
       dlSrt.href = data.srt_url; dlSrt.download = srtName;
       downloads.classList.remove('hidden');
+
+      // 자막 타이밍 편집기 표시 (서버가 ~30자 큐 + 자동 타임코드를 반환)
+      if (data.cues && data.cues.length) showCueEditor(card, data.cues);
 
       status.textContent = `완료 (${data.duration_seconds.toFixed(1)}s)`;
       card.classList.add('done');
@@ -574,6 +786,11 @@
           const dlSrt = card.querySelector('.dl-srt');
           dlSrt.href = srtUrl; dlSrt.download = srtName;
           card.querySelector('.scene-downloads').classList.remove('hidden');
+          // 생성된 .srt를 읽어 자막 타이밍 편집기 채우기
+          fetch(srtUrl + '?t=' + Date.now())
+            .then(r => (r.ok ? r.text() : ''))
+            .then(txt => { const cues = parseSrtCues(txt); if (cues.length) showCueEditor(card, cues); })
+            .catch(() => {});
           card.querySelector('.scene-status').textContent = '완료';
           card.classList.remove('error', 'busy');
           card.classList.add('done');

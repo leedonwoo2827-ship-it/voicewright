@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import re
 import time
@@ -36,7 +37,14 @@ from ..schemas import (
     VoiceInfoOut,
     VoiceListResponse,
 )
-from ..srt import SrtEntry, make_chapter_srt, make_single_srt
+from ..srt import (
+    Cue,
+    auto_time_cues,
+    make_multi_srt,
+    merge_scene_cues,
+    parse_srt_cues,
+    split_into_cues,
+)
 from ..voices import ALL_VOICE_CODES, load_voice_map
 from .jobs import JobRecord, get_registry
 
@@ -305,9 +313,10 @@ async def synthesize_scene(
     _write_wav(wav_path, wav, engine.sample_rate)
 
     actual_duration = float(len(wav)) / float(engine.sample_rate)
-    dur_for_srt = narration_seconds if narration_seconds else actual_duration
     body_for_srt = (srt_text or text).strip()  # 자막엔 항상 원본 텍스트가 들어감
-    srt_body_str = make_single_srt(body_for_srt, dur_for_srt)
+    # ~30자 구간으로 쪼개고 실측 오디오 길이에 맞춰 자동 타임코드 부여 (사용자가 이후 조정)
+    cues = auto_time_cues(split_into_cues(body_for_srt), actual_duration)
+    srt_body_str = make_multi_srt(cues)
     srt_p = srt_path(out_root, chapter, int(scene))
     srt_p.parent.mkdir(parents=True, exist_ok=True)
     srt_p.write_text(srt_body_str, encoding="utf-8")
@@ -319,6 +328,7 @@ async def synthesize_scene(
         "duration_seconds": actual_duration,
         "wav_url": f"/api/files/ch{chapter}/audio/{wav_path.name}",
         "srt_url": f"/api/files/ch{chapter}/subtitles/{srt_p.name}",
+        "cues": [{"text": c.text, "start": c.start, "end": c.end} for c in cues],
     }
 
 
@@ -354,12 +364,61 @@ def _wav_duration(path: Path) -> float:
     return info.frames / float(info.samplerate)
 
 
-def _read_single_srt_body(path: Path) -> str:
-    """단일 블록 SRT (`make_single_srt` 출력 형식)에서 자막 본문만 추출."""
-    lines = path.read_text(encoding="utf-8").strip().split("\n")
-    if len(lines) < 3:
-        return ""
-    return "\n".join(lines[2:]).strip()
+def _cues_from_payload(raw: str) -> list[Cue]:
+    """프런트가 보낸 cues JSON([{start,end,text}, ...])을 검증해 Cue 목록으로."""
+    try:
+        data = json.loads(raw)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"invalid cues JSON: {exc}") from exc
+    if not isinstance(data, list):
+        raise HTTPException(status_code=422, detail="cues must be a list")
+    cues: list[Cue] = []
+    prev_end = -1.0
+    for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=422, detail=f"cue {i} must be an object")
+        text = str(item.get("text", "")).strip()
+        try:
+            start = float(item.get("start", 0.0))
+            end = float(item.get("end", 0.0))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"cue {i} has non-numeric time")
+        if start < 0 or end < start:
+            raise HTTPException(status_code=422, detail=f"cue {i} time invalid (start={start}, end={end})")
+        if start < prev_end - 1e-3:
+            raise HTTPException(status_code=422, detail=f"cue {i} overlaps previous (start < prev end)")
+        prev_end = end
+        if text:
+            cues.append(Cue(text=text, start=round(start, 3), end=round(end, 3)))
+    return cues
+
+
+@router.post("/save_scene_srt")
+async def save_scene_srt(
+    chapter: str = Form(...),
+    scene: int = Form(...),
+    cues: str = Form(...),
+    output_root: str | None = Form(None),
+) -> dict:
+    """사용자가 UI에서 조정한 큐 타임코드를 per-scene SRT로 덮어쓴다."""
+    chap = normalize_chapter_id(chapter)
+    if chap is None:
+        raise HTTPException(status_code=422, detail=f"invalid chapter: {chapter}")
+    parsed = _cues_from_payload(cues)
+    if not parsed:
+        raise HTTPException(status_code=422, detail="no cues to save")
+
+    s = settings_module.load()
+    out_root = Path(output_root) if output_root else s.workspace_root
+    srt_p = srt_path(out_root, chap, int(scene))
+    srt_p.parent.mkdir(parents=True, exist_ok=True)
+    srt_p.write_text(make_multi_srt(parsed), encoding="utf-8")
+    return {
+        "chapter": chap,
+        "scene": int(scene),
+        "cue_count": len(parsed),
+        "srt_url": f"/api/files/ch{chap}/subtitles/{srt_p.name}",
+    }
 
 
 @router.post("/regenerate_chapter_srt")
@@ -367,7 +426,7 @@ async def regenerate_chapter_srt(chapter: str = Form(...)) -> dict:
     """workspace의 per-scene SRT + WAV을 다시 모아 챕터 통합 SRT를 새로 만든다.
 
     카드별 재생성으로 일부 scene이 갱신된 뒤, 챕터 자막의 타임코드를 현재
-    오디오와 동기화하기 위함.
+    오디오와 동기화하기 위함. 멀티큐 per-scene SRT를 누적 offset으로 병합한다.
     """
     chap = normalize_chapter_id(chapter)
     if chap is None:
@@ -378,7 +437,7 @@ async def regenerate_chapter_srt(chapter: str = Form(...)) -> dict:
     if not sub_dir.exists():
         raise HTTPException(status_code=404, detail=f"no subtitles dir for ch{chap}")
 
-    entries: list[SrtEntry] = []
+    scene_data: list[tuple[int, list[Cue], float]] = []
     for srt_p in sorted(sub_dir.glob("*_narration.srt")):
         m = _PER_SCENE_SRT_RE.match(srt_p.name)
         if not m:
@@ -388,21 +447,21 @@ async def regenerate_chapter_srt(chapter: str = Form(...)) -> dict:
         if not wav_p.exists():
             # SRT만 있고 WAV가 없으면 스킵 (오디오 없는 scene은 챕터 SRT에 포함 못함)
             continue
-        body = _read_single_srt_body(srt_p)
+        cues = parse_srt_cues(srt_p.read_text(encoding="utf-8"))
         dur = _wav_duration(wav_p)
-        entries.append(SrtEntry(scene=scene_num, text=body, duration=dur))
+        scene_data.append((scene_num, cues, dur))
 
-    if not entries:
+    if not scene_data:
         raise HTTPException(status_code=404, detail="no per-scene SRT/WAV pairs found")
 
-    entries.sort(key=lambda e: e.scene)
-    chapter_text = make_chapter_srt(entries)
+    scene_data.sort(key=lambda t: t[0])
+    chapter_text = merge_scene_cues([(cues, dur) for _, cues, dur in scene_data])
     cp = chapter_srt_path(s.workspace_root, chap)
     cp.parent.mkdir(parents=True, exist_ok=True)
     cp.write_text(chapter_text, encoding="utf-8")
     return {
         "chapter": chap,
-        "scene_count": len(entries),
+        "scene_count": len(scene_data),
         "url": f"/api/files/ch{chap}/subtitles_full",
     }
 

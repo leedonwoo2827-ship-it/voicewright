@@ -58,7 +58,7 @@ main { padding: 24px 32px; max-width: 1500px; }
 /* 배치 탭만 2-column: 좌측 옵션 패널 + 우측 scene 목록 */
 #tab-batch.active {
   display: grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: 280px 1fr;   /* 자막 열 시간 거터 공간 확보용으로 좌측 축소 */
   gap: 28px;
   align-items: start;
 }
@@ -380,6 +380,135 @@ code {
   font-size: 12px;
   padding: 4px 10px;
 }
+
+/* ---- 자막 화면 미리보기 ---- */
+.cue-preview {
+  margin: 10px 0 6px;
+  background: #1f2230;
+  border-radius: 8px;
+  padding: 18px 16px 10px;
+}
+.cue-preview.hidden { display: none; }
+.cue-preview-text {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+.cue-progress {
+  margin-top: 10px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.cue-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.1s linear;
+}
+
+/* ---- 자막 타이밍 편집기 ---- */
+.cue-editor {
+  margin: 4px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  padding: 8px 10px;
+}
+.cue-editor.hidden { display: none; }
+.cue-editor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.cue-editor-title { font-size: 12px; font-weight: 600; color: var(--fg); }
+.cue-editor-title small { font-weight: 400; color: var(--muted); margin-left: 4px; }
+.cue-editor-actions { display: flex; gap: 6px; }
+.cue-autofill, .cue-save {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cue-autofill {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.cue-autofill:hover { color: var(--fg); border-color: var(--fg); }
+.cue-save {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: var(--accent);
+  font-weight: 600;
+}
+.cue-save:hover:not(:disabled) { background: #e0e7ff; }
+.cue-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cue-rows { display: flex; flex-direction: column; gap: 4px; }
+.cue-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+.cue-row.cue-active { background: #eef2ff; }
+.cue-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+}
+.cue-time .cue-tilde { color: var(--muted); }
+.cue-start, .cue-end {
+  width: 64px;
+  padding: 3px 5px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 12px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+}
+.cue-start:focus, .cue-end:focus { outline: none; border-color: var(--accent); }
+.cue-text {
+  width: 100%;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  background: #fffbea;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.cue-text:focus { outline: none; border-color: var(--accent); background: #fff; }
+.cue-add, .cue-del {
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  padding: 0;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cue-add:hover { color: var(--ok); border-color: var(--ok); }
+.cue-del:hover { color: var(--error); border-color: var(--error); }
 
 footer {
   margin-top: 40px;

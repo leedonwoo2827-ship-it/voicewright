@@ -20,7 +20,7 @@ from .paths import (
     srt_path,
 )
 from .schemas import Script
-from .srt import SrtEntry, make_chapter_srt, make_single_srt
+from .srt import Cue, auto_time_cues, make_multi_srt, merge_scene_cues, split_into_cues
 from .voices import VoiceMap, load_voice_map
 
 logger = logging.getLogger(__name__)
@@ -106,6 +106,7 @@ async def run_batch(
     files: list[str] = []
     scene_lookup = {sc.scene: sc for sc in script.scenes}
     actual_durations: dict[int, float] = {}
+    scene_cues: dict[int, list[Cue]] = {}
 
     for voice_code, scene_numbers in voice_groups.items():
         for i in range(0, len(scene_numbers), chunk_size):
@@ -128,15 +129,16 @@ async def run_batch(
                 write_wav(out_path, wav, engine.sample_rate)
                 files.append(out_path.name)
 
-                # 개별 scene SRT (단일 블록) — 자막엔 원문(srt_text)을 우선 사용
+                # 개별 scene SRT (멀티큐) — 자막엔 원문(srt_text)을 우선 사용,
+                # ~30자 구간으로 쪼개 실측 오디오 길이에 맞춰 타임코드 부여
                 actual_dur = float(len(wav)) / float(engine.sample_rate)
                 actual_durations[scene_num] = actual_dur
                 scene_obj = scene_lookup[scene_num]
-                dur_for_srt = scene_obj.narration_seconds or actual_dur
                 srt_body = scene_obj.srt_text or scene_obj.narration_text
-                srt_text = make_single_srt(srt_body, dur_for_srt)
+                cues = auto_time_cues(split_into_cues(srt_body), actual_dur)
+                scene_cues[scene_num] = cues
                 srt_p = srt_path(out_root, chapter_id, scene_num)
-                srt_p.write_text(srt_text, encoding="utf-8")
+                srt_p.write_text(make_multi_srt(cues), encoding="utf-8")
 
                 completed += 1
                 if on_progress is not None:
@@ -144,17 +146,13 @@ async def run_batch(
                     if hasattr(res, "__await__"):
                         await res
 
-    # 챕터 전체 SRT (누적 타임코드)
+    # 챕터 전체 SRT — scene별 멀티큐를 누적 offset으로 병합
     sorted_scenes = sorted(script.scenes, key=lambda sc: sc.scene)
-    entries = [
-        SrtEntry(
-            scene=sc.scene,
-            text=sc.srt_text or sc.narration_text,
-            duration=sc.narration_seconds or actual_durations.get(sc.scene, 0.0),
-        )
+    scene_seq = [
+        (scene_cues.get(sc.scene, []), actual_durations.get(sc.scene, 0.0))
         for sc in sorted_scenes
     ]
-    chapter_srt_text = make_chapter_srt(entries)
+    chapter_srt_text = merge_scene_cues(scene_seq)
     chapter_srt_path(out_root, chapter_id).write_text(chapter_srt_text, encoding="utf-8")
 
     files.sort()
