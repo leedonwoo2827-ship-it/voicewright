@@ -183,6 +183,52 @@
     const ms = (m[4] || '0').padEnd(3, '0').slice(0, 3);
     return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + (+ms) / 1000;
   }
+  // 텍스트 → ~maxChars 구간 분할 (backend split_into_cues와 동일 규칙)
+  function splitIntoCues(text, maxChars = 55) {
+    text = (text || '').trim();
+    if (!text) return [];
+    const hardWrap = (piece) => {
+      piece = piece.trim();
+      if (piece.length <= maxChars) return piece ? [piece] : [];
+      const out = []; let cur = '';
+      for (const w of piece.split(' ')) {
+        if (!w) continue;
+        if (!cur) cur = w;
+        else if (cur.length + 1 + w.length <= maxChars) cur = cur + ' ' + w;
+        else { out.push(cur); cur = w; }
+        while (cur.length > maxChars) { out.push(cur.slice(0, maxChars)); cur = cur.slice(maxChars); }
+      }
+      if (cur) out.push(cur);
+      return out;
+    };
+    const cues = [];
+    for (let sent of text.split(/(?<=[.!?。！？…])\s+/)) {
+      sent = sent.trim();
+      if (!sent) continue;
+      const parts = sent.split(/(?<=[,，、])\s+/).map(p => p.trim()).filter(Boolean);
+      let cur = '';
+      for (const p of parts) {
+        if (!cur) cur = p;
+        else if (cur.length + 1 + p.length <= maxChars) cur = cur + ' ' + p;
+        else { cues.push(...hardWrap(cur)); cur = p; }
+      }
+      if (cur) cues.push(...hardWrap(cur));
+    }
+    return cues.filter(Boolean);
+  }
+  // [{text,start,end}] → SRT 문자열 (backend make_multi_srt와 동일 포맷)
+  function cuesToSrt(cues) {
+    const parts = []; let idx = 1;
+    for (const c of (cues || [])) {
+      const body = (c.text || '').trim();
+      if (!body) continue;
+      const start = Math.max(c.start, 0);
+      const end = Math.max(c.end, start + 0.001);
+      parts.push(String(idx), `${formatSrtTime(start)} --> ${formatSrtTime(end)}`, body, '');
+      idx++;
+    }
+    return parts.length ? parts.join('\n').replace(/\s+$/, '') + '\n' : '';
+  }
   // SRT 문자열 → [{text,start,end}] (전체 일괄 후 .srt 재로딩용)
   function parseSrtCues(srt) {
     const cues = [];
@@ -199,6 +245,31 @@
     });
     return cues;
   }
+
+  // 자유 텍스트 카드: 편집된 큐로 .srt 다운로드 링크를 다시 만든다 (서버 저장 없음)
+  function updateSingleSrtDownload() {
+    const cues = singleCard._cues || [];
+    const srt = cuesToSrt(cues);
+    if (!srt) return;
+    const link = document.getElementById('downloadSrtLink');
+    link.href = URL.createObjectURL(new Blob([srt], { type: 'application/x-subrip' }));
+    if (singleCard._srtName) link.download = singleCard._srtName;
+  }
+
+  // 자유 텍스트 카드의 재생 동기화 + 큐 편집 버튼 (1회 바인딩)
+  setupCueSync(singleCard);
+  singleCard.querySelector('.cue-autofill').addEventListener('click', () => {
+    redistributeCues(singleCard);
+    renderCueRows(singleCard);
+    updateSingleSrtDownload();
+  });
+  singleCard.querySelector('.cue-save').addEventListener('click', () => {
+    updateSingleSrtDownload();
+    const b = singleCard.querySelector('.cue-save');
+    const old = b.textContent;
+    b.textContent = '저장됨 ✓';
+    setTimeout(() => { b.textContent = old; }, 1500);
+  });
 
   document.getElementById('generate').addEventListener('click', async () => {
     const pronText = pronTa.value.trim();
@@ -243,16 +314,16 @@
       wavLink.download = `synth_${voice}_${stamp}.wav`;
 
       const srtLink = document.getElementById('downloadSrtLink');
-      const finalizeSrt = (dur) => {
-        const srt = makeSingleSrt(srtText, dur);
-        const srtUrl = URL.createObjectURL(new Blob([srt], { type: 'application/x-subrip' }));
-        srtLink.href = srtUrl;
-        srtLink.download = `synth_${voice}_${stamp}.srt`;
-      };
-      // duration은 metadata 로드 후 결정 — 우선 임시로 1초로 셋업한 뒤 갱신
-      finalizeSrt(1);
+      singleCard._srtName = `synth_${voice}_${stamp}.srt`;
+      // metadata 로드 전: 단일 블록으로 임시 셋업
+      const fallback = makeSingleSrt(srtText, 1);
+      srtLink.href = URL.createObjectURL(new Blob([fallback], { type: 'application/x-subrip' }));
+      srtLink.download = singleCard._srtName;
+      // metadata 로드 후: 실측 길이로 ~55자 구간 자막 편집기 구성 + 다운로드 갱신
       audio.addEventListener('loadedmetadata', () => {
-        if (Number.isFinite(audio.duration) && audio.duration > 0) finalizeSrt(audio.duration);
+        const dur = (Number.isFinite(audio.duration) && audio.duration > 0) ? audio.duration : 1;
+        showCueEditor(singleCard, autoTimeCues(splitIntoCues(srtText), dur));
+        updateSingleSrtDownload();
       }, { once: true });
 
       resEl.classList.remove('hidden');
